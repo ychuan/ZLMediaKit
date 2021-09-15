@@ -143,12 +143,42 @@ API_EXPORT void API_CALL mk_media_set_on_close(mk_media ctx, on_mk_media_close c
 typedef int(API_CALL *on_mk_media_seek)(void *user_data,uint32_t stamp_ms);
 
 /**
+ * 收到客户端的pause或resume请求时触发该回调
+ * @param user_data 用户数据指针,通过mk_media_set_on_pause设置
+ * @param pause 1:暂停, 0: 恢复
+ */
+typedef int(API_CALL* on_mk_media_pause)(void* user_data, int pause);
+
+/**
+ * 收到客户端的speed请求时触发该回调
+ * @param user_data 用户数据指针,通过mk_media_set_on_pause设置
+ * @param speed 0.5 1.0 2.0
+ */
+typedef int(API_CALL* on_mk_media_speed)(void* user_data, float speed);
+
+/**
  * 监听播放器seek请求事件
  * @param ctx 对象指针
  * @param cb 回调指针
  * @param user_data 用户数据指针
  */
 API_EXPORT void API_CALL mk_media_set_on_seek(mk_media ctx, on_mk_media_seek cb, void *user_data);
+
+/**
+ * 监听播放器pause请求事件
+ * @param ctx 对象指针
+ * @param cb 回调指针
+ * @param user_data 用户数据指针
+ */
+API_EXPORT void API_CALL mk_media_set_on_pause(mk_media ctx, on_mk_media_pause cb, void* user_data);
+
+/**
+ * 监听播放器pause请求事件
+ * @param ctx 对象指针
+ * @param cb 回调指针
+ * @param user_data 用户数据指针
+ */
+API_EXPORT void API_CALL mk_media_set_on_speed(mk_media ctx, on_mk_media_speed cb, void* user_data);
 
 /**
  * 获取总的观看人数
@@ -179,7 +209,7 @@ API_EXPORT void API_CALL mk_media_set_on_regist(mk_media ctx, on_mk_media_source
 typedef on_mk_media_source_send_rtp_result on_mk_media_send_rtp_result;
 
 /**
- * 开始发送ps-rtp流
+ * 开始发送一路ps-rtp流(通过ssrc区分多路)
  * @param ctx 对象指针
  * @param dst_url 目标ip或域名
  * @param dst_port 目标端口
@@ -191,11 +221,12 @@ typedef on_mk_media_source_send_rtp_result on_mk_media_send_rtp_result;
 API_EXPORT void API_CALL mk_media_start_send_rtp(mk_media ctx, const char *dst_url, uint16_t dst_port, const char *ssrc, int is_udp, on_mk_media_send_rtp_result cb, void *user_data);
 
 /**
- * 停止ps-rtp发送
+ * 停止某路或全部ps-rtp发送
  * @param ctx 对象指针
+ * @param ssrc rtp的ssrc，10进制的字符串打印，如果为null或空字符串，则停止所有rtp推流
  * @return 1成功，0失败
  */
-API_EXPORT int API_CALL mk_media_stop_send_rtp(mk_media ctx);
+API_EXPORT int API_CALL mk_media_stop_send_rtp(mk_media ctx, const char *ssrc);
 
 #ifdef __cplusplus
 }

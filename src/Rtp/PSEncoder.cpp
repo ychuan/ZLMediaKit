@@ -11,6 +11,7 @@
 #if defined(ENABLE_RTPPROXY)
 #include "PSEncoder.h"
 #include "Extension/H264.h"
+#include "Rtsp/RtspMuxer.h"
 namespace mediakit{
 
 PSEncoder::PSEncoder() {
@@ -117,19 +118,13 @@ void PSEncoder::inputFrame(const Frame::Ptr &frame) {
     auto &track_info = it->second;
     int64_t dts_out, pts_out;
     switch (frame->getCodecId()) {
-        case CodecH264: {
-            int type = H264_TYPE(*((uint8_t *) frame->data() + frame->prefixSize()));
-            if (type == H264Frame::NAL_SEI) {
-                break;
-            }
-        }
-
+        case CodecH264:
         case CodecH265: {
             //这里的代码逻辑是让SPS、PPS、IDR这些时间戳相同的帧打包到一起当做一个帧处理，
             _frame_merger.inputFrame(frame, [&](uint32_t dts, uint32_t pts, const Buffer::Ptr &buffer, bool have_idr) {
                 track_info.stamp.revise(dts, pts, dts_out, pts_out);
                 //取视频时间戳为TS的时间戳
-                _timestamp = (uint32_t) dts_out;
+                _timestamp = (uint32_t) pts_out;
                 ps_muxer_input(_muxer.get(), track_info.track_id, have_idr ? 0x0001 : 0,
                                pts_out * 90LL, dts_out * 90LL, buffer->data(), buffer->size());
             });
@@ -153,24 +148,6 @@ void PSEncoder::inputFrame(const Frame::Ptr &frame) {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////
-
-class RingDelegateHelper : public RingDelegate<RtpPacket::Ptr> {
-public:
-    typedef function<void(RtpPacket::Ptr in, bool is_key)> onRtp;
-
-    ~RingDelegateHelper() override{}
-    RingDelegateHelper(onRtp on_rtp){
-        _on_rtp = std::move(on_rtp);
-    }
-    void onWrite(RtpPacket::Ptr in, bool is_key) override{
-        _on_rtp(std::move(in), is_key);
-    }
-
-private:
-    onRtp _on_rtp;
-};
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 PSEncoderImp::PSEncoderImp(uint32_t ssrc, uint8_t payload_type) {
@@ -188,7 +165,7 @@ PSEncoderImp::~PSEncoderImp() {
 }
 
 void PSEncoderImp::onPS(uint32_t stamp, void *packet, size_t bytes) {
-    _rtp_encoder->inputFrame(std::make_shared<FrameFromPtr>((char *) packet, bytes, stamp));
+    _rtp_encoder->inputFrame(std::make_shared<FrameFromPtr>((char *) packet, bytes, stamp, stamp));
 }
 
 }//namespace mediakit

@@ -94,13 +94,7 @@ void TsMuxer::inputFrame(const Frame::Ptr &frame) {
     int64_t dts_out, pts_out;
     _is_idr_fast_packet = !_have_video;
     switch (frame->getCodecId()){
-        case CodecH264: {
-            int type = H264_TYPE(*((uint8_t *) frame->data() + frame->prefixSize()));
-            if (type == H264Frame::NAL_SEI) {
-                break;
-            }
-        }
-
+        case CodecH264:
         case CodecH265: {
             //这里的代码逻辑是让SPS、PPS、IDR这些时间戳相同的帧打包到一起当做一个帧处理，
             _frame_merger.inputFrame(frame, [&](uint32_t dts, uint32_t pts, const Buffer::Ptr &buffer, bool have_idr){
@@ -110,6 +104,7 @@ void TsMuxer::inputFrame(const Frame::Ptr &frame) {
                 _is_idr_fast_packet = have_idr;
                 mpeg_ts_write(_context, track_info.track_id, have_idr ? 0x0001 : 0,
                               pts_out * 90LL, dts_out * 90LL, buffer->data(), buffer->size());
+                flushCache();
             });
             break;
         }
@@ -129,6 +124,7 @@ void TsMuxer::inputFrame(const Frame::Ptr &frame) {
             }
             mpeg_ts_write(_context, track_info.track_id, frame->keyFrame() ? 0x0001 : 0,
                           pts_out * 90LL, dts_out * 90LL, frame->data(), frame->size());
+            flushCache();
             break;
         }
     }
@@ -137,7 +133,7 @@ void TsMuxer::inputFrame(const Frame::Ptr &frame) {
 void TsMuxer::resetTracks() {
     _have_video = false;
     //通知片段中断
-    onTs(nullptr, 0, _timestamp, 0);
+    onTs(nullptr, _timestamp, 0);
     uninit();
     init();
 }
@@ -154,14 +150,25 @@ void TsMuxer::init() {
             },
             [](void *param, const void *packet, size_t bytes) {
                 TsMuxer *muxer = (TsMuxer *) param;
-                muxer->onTs(packet, bytes, muxer->_timestamp, muxer->_is_idr_fast_packet);
-                muxer->_is_idr_fast_packet = false;
+                muxer->onTs_l(packet, bytes);
                 return 0;
             }
     };
     if (_context == nullptr) {
         _context = mpeg_ts_create(&s_func, this);
     }
+}
+
+void TsMuxer::onTs_l(const void *packet, size_t bytes) {
+    if (!_cache) {
+        _cache = std::make_shared<BufferLikeString>();
+    }
+    _cache->append((char *) packet, bytes);
+}
+
+void TsMuxer::flushCache() {
+    onTs(std::move(_cache), _timestamp, _is_idr_fast_packet);
+    _is_idr_fast_packet = false;
 }
 
 void TsMuxer::uninit() {

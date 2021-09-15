@@ -12,6 +12,7 @@
 #define ZLMEDIAKIT_ASSERT_H
 
 #include <stdio.h>
+
 #ifndef NDEBUG
     #ifdef assert
         #undef assert
@@ -25,7 +26,7 @@
     }
     #endif
 
-    #define assert(exp) Assert_Throw(!(exp), #exp, __FUNCTION__, __FILE__, __LINE__);
+    #define assert(exp) Assert_Throw(!(exp), #exp, __FUNCTION__, __FILE__, __LINE__)
 #else
     #define	assert(e)	((void)0)
 #endif//NDEBUG

@@ -48,9 +48,9 @@ void release_pusher(mk_media *ptr) {
 
 void release_context(Context **ptr){
     if (ptr && *ptr) {
-        release_pusher((*ptr)->pusher);
-        release_media((*ptr)->media);
-        release_player((*ptr)->player);
+        release_pusher(&(*ptr)->pusher);
+        release_media(&(*ptr)->media);
+        release_player(&(*ptr)->player);
         free(*ptr);
         *ptr = NULL;
     }
@@ -91,10 +91,10 @@ void API_CALL on_mk_play_event_func(void *user_data, int err_code, const char *e
     if (err_code == 0) {
         //success
         log_debug("play success!");
-        ctx->media = mk_media_create("__defaultVost__", "live", "test", 0, 0, 0);
+        ctx->media = mk_media_create("__defaultVhost__", "live", "test", 0, 0, 0);
 
-        int video_codec = mk_player_video_codecId(ctx->player);
-        int audio_codec = mk_player_audio_codecId(ctx->player);
+        int video_codec = mk_player_video_codec_id(ctx->player);
+        int audio_codec = mk_player_audio_codec_id(ctx->player);
         if(video_codec != -1){
             mk_media_init_video(ctx->media, video_codec,
                                 mk_player_video_width(ctx->player),
@@ -108,6 +108,7 @@ void API_CALL on_mk_play_event_func(void *user_data, int err_code, const char *e
                                 mk_player_audio_channel(ctx->player),
                                 mk_player_audio_bit(ctx->player));
         }
+        mk_media_init_complete(ctx->media);
         mk_media_set_on_regist(ctx->media, on_mk_media_source_regist_func, ctx);
 
     } else {
@@ -163,6 +164,7 @@ int main(int argc, char *argv[]){
             .ini = NULL,
             .ini_is_path = 0,
             .log_level = 0,
+            .log_mask = LOG_CONSOLE,
             .ssl = NULL,
             .ssl_is_path = 1,
             .ssl_pwd = NULL,

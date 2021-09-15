@@ -74,6 +74,7 @@ const string kRtspDemand = GENERAL_FIELD"rtsp_demand";
 const string kRtmpDemand = GENERAL_FIELD"rtmp_demand";
 const string kTSDemand = GENERAL_FIELD"ts_demand";
 const string kFMP4Demand = GENERAL_FIELD"fmp4_demand";
+const string kEnableAudio = GENERAL_FIELD"enable_audio";
 
 onceToken token([](){
     mINI::Instance()[kFlowThreshold] = 1024;
@@ -92,6 +93,7 @@ onceToken token([](){
     mINI::Instance()[kRtmpDemand] = 0;
     mINI::Instance()[kTSDemand] = 0;
     mINI::Instance()[kFMP4Demand] = 0;
+    mINI::Instance()[kEnableAudio] = 1;
 
 },nullptr);
 
@@ -110,6 +112,8 @@ const string kKeepAliveSecond = HTTP_FIELD"keepAliveSecond";
 const string kCharSet = HTTP_FIELD"charSet";
 //http 服务器根目录
 const string kRootPath = HTTP_FIELD"rootPath";
+//http 服务器虚拟目录
+const string kVirtualPath = HTTP_FIELD "virtualPath";
 //http 404错误提示内容
 const string kNotFound = HTTP_FIELD"notFound";
 //是否显示文件夹菜单
@@ -117,9 +121,10 @@ const string kDirMenu = HTTP_FIELD"dirMenu";
 
 onceToken token([](){
     mINI::Instance()[kSendBufSize] = 64 * 1024;
-    mINI::Instance()[kMaxReqSize] = 4*1024;
+    mINI::Instance()[kMaxReqSize] = 4 * 10240;
     mINI::Instance()[kKeepAliveSecond] = 15;
     mINI::Instance()[kDirMenu] = true;
+    mINI::Instance()[kVirtualPath] = "";
 
 #if defined(_WIN32)
     mINI::Instance()[kCharSet] = "gb2312";
@@ -190,16 +195,13 @@ namespace Rtp {
 //RTP打包最大MTU,公网情况下更小
 const string kVideoMtuSize = RTP_FIELD"videoMtuSize";
 const string kAudioMtuSize = RTP_FIELD"audioMtuSize";
-//RTP排序缓存最大个数
-const string kMaxRtpCount = RTP_FIELD"maxRtpCount";
-//如果RTP序列正确次数累计达到该数字就启动清空排序缓存
-const string kClearCount = RTP_FIELD"clearCount";
+//rtp包最大长度限制，单位是KB
+const string kRtpMaxSize = RTP_FIELD"rtpMaxSize";
 
 onceToken token([](){
     mINI::Instance()[kVideoMtuSize] = 1400;
     mINI::Instance()[kAudioMtuSize] = 600;
-    mINI::Instance()[kMaxRtpCount] = 50;
-    mINI::Instance()[kClearCount] = 10;
+    mINI::Instance()[kRtpMaxSize] = 10;
 },nullptr);
 } //namespace Rtsp
 
@@ -264,6 +266,8 @@ const string kFileBufSize = HLS_FIELD"fileBufSize";
 const string kFilePath = HLS_FIELD"filePath";
 // 是否广播 ts 切片完成通知
 const string kBroadcastRecordTs = HLS_FIELD"broadcastRecordTs";
+//hls直播文件删除延时，单位秒
+const string kDeleteDelaySec = HLS_FIELD"deleteDelaySec";
 
 onceToken token([](){
     mINI::Instance()[kSegmentDuration] = 2;
@@ -272,6 +276,7 @@ onceToken token([](){
     mINI::Instance()[kFileBufSize] = 64 * 1024;
     mINI::Instance()[kFilePath] = "./www";
     mINI::Instance()[kBroadcastRecordTs] = false;
+    mINI::Instance()[kDeleteDelaySec] = 0;
 },nullptr);
 } //namespace Hls
 
@@ -409,6 +414,10 @@ void operator delete(void *ptr) {
     free(ptr);
 }
 
+void operator delete(void *ptr, std::size_t) {
+    free(ptr);
+}
+
 void *operator new[](std::size_t size) {
     auto ret = malloc(size);
     if (ret) {
@@ -418,6 +427,10 @@ void *operator new[](std::size_t size) {
 }
 
 void operator delete[](void *ptr) {
+    free(ptr);
+}
+
+void operator delete[](void *ptr, std::size_t) {
     free(ptr);
 }
 #endif

@@ -47,6 +47,7 @@ void RtmpPusher::teardown() {
 }
 
 void RtmpPusher::onPublishResult(const SockException &ex, bool handshake_done) {
+    DebugL << ex.what();
     if (ex.getErrCode() == Err_shutdown) {
         //主动shutdown的，不触发回调
         return;
@@ -172,9 +173,10 @@ inline void RtmpPusher::send_createStream() {
     });
 }
 
+#define RTMP_STREAM_LIVE    "live"
 inline void RtmpPusher::send_publish() {
     AMFEncoder enc;
-    enc << "publish" << ++_send_req_id << nullptr << _stream_id << _app;
+    enc << "publish" << ++_send_req_id << nullptr << _stream_id << RTMP_STREAM_LIVE;
     sendRequest(MSG_CMD, enc.data());
 
     addOnStatusCB([this](AMFValue &val) {

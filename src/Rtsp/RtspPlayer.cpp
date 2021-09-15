@@ -25,7 +25,8 @@ namespace mediakit {
 enum PlayType {
     type_play = 0,
     type_pause,
-    type_seek
+    type_seek,
+    type_speed
 };
 
 RtspPlayer::RtspPlayer(const EventPoller::Ptr &poller) : TcpClient(poller){
@@ -205,7 +206,7 @@ void RtspPlayer::handleResDESCRIBE(const Parser& parser) {
     }
     _rtcp_context.clear();
     for (auto &track : _sdp_track) {
-        _rtcp_context.emplace_back(std::make_shared<RtcpContext>(track->_samplerate, true));
+        _rtcp_context.emplace_back(std::make_shared<RtcpContext>(true));
     }
     sendSetup(0);
 }
@@ -306,7 +307,7 @@ void RtspPlayer::handleResSETUP(const Parser &parser, unsigned int track_idx) {
             rtpto.sin_port = ntohs(rtp_port);
             rtpto.sin_family = AF_INET;
             rtpto.sin_addr.s_addr = inet_addr(get_peer_ip().data());
-            pRtpSockRef->setSendPeerAddr((struct sockaddr *)&(rtpto));
+            pRtpSockRef->bindPeerAddr((struct sockaddr *)&(rtpto));
             //发送rtp打洞包
             pRtpSockRef->send("\xce\xfa\xed\xfe", 4);
 
@@ -314,7 +315,7 @@ void RtspPlayer::handleResSETUP(const Parser &parser, unsigned int track_idx) {
             rtpto.sin_port = ntohs(rtcp_port);
             rtpto.sin_family = AF_INET;
             rtpto.sin_addr.s_addr = inet_addr(get_peer_ip().data());
-            pRtcpSockRef->setSendPeerAddr((struct sockaddr *)&(rtpto));
+            pRtcpSockRef->bindPeerAddr((struct sockaddr *)&(rtpto));
         }
 
         auto srcIP = inet_addr(get_peer_ip().data());
@@ -414,8 +415,12 @@ void RtspPlayer::sendPause(int type , uint32_t seekMS){
     }
 }
 
-void RtspPlayer::pause(bool pause_flag) {
-    sendPause(pause_flag ? type_pause : type_seek, getProgressMilliSecond());
+void RtspPlayer::pause(bool bPause) {
+    sendPause(bPause ? type_pause : type_seek, getProgressMilliSecond());
+}
+
+void RtspPlayer::speed(float speed) {
+    sendRtspRequest("PLAY", _content_base, {"Scale", StrPrinter << speed});
 }
 
 void RtspPlayer::handleResPAUSE(const Parser& parser,int type) {
@@ -488,6 +493,11 @@ void RtspPlayer::onRtcpPacket(int track_idx, SdpTrack::Ptr &track, uint8_t *data
     auto rtcp_arr = RtcpHeader::loadFromBytes((char *) data, len);
     for (auto &rtcp : rtcp_arr) {
         _rtcp_context[track_idx]->onRtcp(rtcp);
+        if ((RtcpType) rtcp->pt == RtcpType::RTCP_SR) {
+            auto sr = (RtcpSR *) (rtcp);
+            //设置rtp时间戳与ntp时间戳的对应关系
+            setNtpStamp(track_idx, sr->rtpts, sr->getNtpUnixStampMS());
+        }
     }
 }
 
@@ -591,7 +601,7 @@ void RtspPlayer::sendRtspRequest(const string &cmd, const string &url,const StrC
 
 void RtspPlayer::onBeforeRtpSorted(const RtpPacket::Ptr &rtp, int track_idx){
     auto &rtcp_ctx = _rtcp_context[track_idx];
-    rtcp_ctx->onRtp(rtp->getSeq(), rtp->getStampMS(), rtp->size() - RtpPacket::kRtpTcpHeaderSize);
+    rtcp_ctx->onRtp(rtp->getSeq(), rtp->getStamp(), rtp->ntp_stamp, rtp->sample_rate, rtp->size() - RtpPacket::kRtpTcpHeaderSize);
 
     auto &ticker = _rtcp_send_ticker[track_idx];
     if (ticker.elapsedTime() < 3 * 1000) {
@@ -628,8 +638,8 @@ void RtspPlayer::onBeforeRtpSorted(const RtpPacket::Ptr &rtp, int track_idx){
     auto ssrc = rtp->getSSRC();
     auto rtcp = rtcp_ctx->createRtcpRR(ssrc + 1, ssrc);
     auto rtcp_sdes = RtcpSdes::create({SERVER_NAME});
-    rtcp_sdes->items.type = (uint8_t) SdesType::RTCP_SDES_CNAME;
-    rtcp_sdes->items.ssrc = htonl(ssrc);
+    rtcp_sdes->chunks.type = (uint8_t) SdesType::RTCP_SDES_CNAME;
+    rtcp_sdes->chunks.ssrc = htonl(ssrc);
     send_rtcp(this, track_idx, std::move(rtcp));
     send_rtcp(this, track_idx, RtcpHeader::toBuffer(rtcp_sdes));
     ticker.resetTime();

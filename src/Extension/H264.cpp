@@ -146,8 +146,7 @@ bool H264Track::ready() {
 
 void H264Track::inputFrame(const Frame::Ptr &frame) {
     using H264FrameInternal = FrameInternal<H264FrameNoCacheAble>;
-
-    int type = H264_TYPE(*((uint8_t *) frame->data() + frame->prefixSize()));
+    int type = H264_TYPE( frame->data()[frame->prefixSize()]);
     if (type != H264Frame::NAL_B_P && type != H264Frame::NAL_IDR) {
         //非I/B/P帧情况下，split一下，防止多个帧粘合在一起
         splitH264(frame->data(), frame->size(), frame->prefixSize(), [&](const char *ptr, size_t len, size_t prefix) {
@@ -171,7 +170,7 @@ Track::Ptr H264Track::clone() {
 }
 
 void H264Track::inputFrame_l(const Frame::Ptr &frame){
-    int type = H264_TYPE(*((uint8_t *) frame->data() + frame->prefixSize()));
+    int type = H264_TYPE( frame->data()[frame->prefixSize()]);
     switch (type) {
         case H264Frame::NAL_SPS: {
             _sps = string(frame->data() + frame->prefixSize(), frame->size() - frame->prefixSize());
@@ -181,17 +180,15 @@ void H264Track::inputFrame_l(const Frame::Ptr &frame){
             _pps = string(frame->data() + frame->prefixSize(), frame->size() - frame->prefixSize());
             break;
         }
-        case H264Frame::NAL_IDR: {
-            insertConfigFrame(frame);
-            VideoTrack::inputFrame(frame);
-            break;
-        }
         case H264Frame::NAL_AUD: {
             //忽略AUD帧;
             break;
         }
 
         default:
+            if (frame->keyFrame()) {
+                insertConfigFrame(frame);
+            }
             VideoTrack::inputFrame(frame);
             break;
     }
@@ -235,7 +232,7 @@ public:
         if (bitrate) {
             _printer << "b=AS:" << bitrate << "\r\n";
         }
-        _printer << "a=rtpmap:" << payload_type << " H264/" << 90000 << "\r\n";
+        _printer << "a=rtpmap:" << payload_type << " " << getCodecName() << "/" << 90000 << "\r\n";
         _printer << "a=fmtp:" << payload_type << " packetization-mode=1; profile-level-id=";
 
         char strTemp[1024];
@@ -276,47 +273,6 @@ Sdp::Ptr H264Track::getSdp() {
         return nullptr;
     }
     return std::make_shared<H264Sdp>(getSps(), getPps(), getBitRate() / 1024);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool H264Frame::keyFrame() const {
-    return H264_TYPE(_buffer[_prefix_size]) == H264Frame::NAL_IDR;
-}
-
-bool H264Frame::configFrame() const {
-    switch (H264_TYPE(_buffer[_prefix_size])) {
-        case H264Frame::NAL_SPS:
-        case H264Frame::NAL_PPS: return true;
-        default: return false;
-    }
-}
-
-H264Frame::H264Frame() {
-    _codec_id = CodecH264;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-H264FrameNoCacheAble::H264FrameNoCacheAble(char *ptr,size_t size,uint32_t dts , uint32_t pts ,size_t prefix_size){
-    _ptr = ptr;
-    _size = size;
-    _dts = dts;
-    _pts = pts;
-    _prefix_size = prefix_size;
-    _codec_id = CodecH264;
-}
-
-bool H264FrameNoCacheAble::keyFrame() const {
-    return H264_TYPE(_ptr[_prefix_size]) == H264Frame::NAL_IDR;
-}
-
-bool H264FrameNoCacheAble::configFrame() const {
-    switch (H264_TYPE(_ptr[_prefix_size])) {
-        case H264Frame::NAL_SPS:
-        case H264Frame::NAL_PPS: return true;
-        default: return false;
-    }
 }
 
 }//namespace mediakit

@@ -95,6 +95,7 @@ void RtspPusher::publish(const string &url_str) {
 }
 
 void RtspPusher::onPublishResult(const SockException &ex, bool handshake_done) {
+    DebugL << ex.what();
     if (ex.getErrCode() == Err_shutdown) {
         //主动shutdown的，不触发回调
         return;
@@ -178,7 +179,7 @@ void RtspPusher::sendAnnounce() {
     }
     _rtcp_context.clear();
     for (auto &track : _track_vec) {
-        _rtcp_context.emplace_back(std::make_shared<RtcpContext>(track->_samplerate, false));
+        _rtcp_context.emplace_back(std::make_shared<RtcpContext>(false));
     }
     _on_res_func = std::bind(&RtspPusher::handleResAnnounce, this, placeholders::_1);
     sendRtspRequest("ANNOUNCE", _url, {}, src->getSdp());
@@ -313,13 +314,13 @@ void RtspPusher::handleResSetup(const Parser &parser, unsigned int track_idx) {
         rtpto.sin_port = ntohs(rtp_port);
         rtpto.sin_family = AF_INET;
         rtpto.sin_addr.s_addr = inet_addr(get_peer_ip().data());
-        rtp_sock->setSendPeerAddr((struct sockaddr *) &(rtpto));
+        rtp_sock->bindPeerAddr((struct sockaddr *) &(rtpto));
 
         //设置rtcp发送目标，为后续发送rtcp做准备
         rtpto.sin_port = ntohs(rtcp_port);
         rtpto.sin_family = AF_INET;
         rtpto.sin_addr.s_addr = inet_addr(get_peer_ip().data());
-        rtcp_sock->setSendPeerAddr((struct sockaddr *)&(rtpto));
+        rtcp_sock->bindPeerAddr((struct sockaddr *)&(rtpto));
 
         auto srcIP = inet_addr(get_peer_ip().data());
         weak_ptr<RtspPusher> weakSelf = dynamic_pointer_cast<RtspPusher>(shared_from_this());
@@ -359,7 +360,7 @@ void RtspPusher::updateRtcpContext(const RtpPacket::Ptr &rtp){
     int track_index = getTrackIndexByTrackType(rtp->type);
     auto &ticker = _rtcp_send_ticker[track_index];
     auto &rtcp_ctx = _rtcp_context[track_index];
-    rtcp_ctx->onRtp(rtp->getSeq(), rtp->getStampMS(), rtp->size() - RtpPacket::kRtpTcpHeaderSize);
+    rtcp_ctx->onRtp(rtp->getSeq(), rtp->getStamp(), rtp->ntp_stamp, rtp->sample_rate, rtp->size() - RtpPacket::kRtpTcpHeaderSize);
 
     //send rtcp every 5 second
     if (ticker.elapsedTime() > 5 * 1000) {
@@ -377,8 +378,8 @@ void RtspPusher::updateRtcpContext(const RtpPacket::Ptr &rtp){
         auto ssrc = rtp->getSSRC();
         auto rtcp = rtcp_ctx->createRtcpSR(ssrc + 1);
         auto rtcp_sdes = RtcpSdes::create({SERVER_NAME});
-        rtcp_sdes->items.type = (uint8_t) SdesType::RTCP_SDES_CNAME;
-        rtcp_sdes->items.ssrc = htonl(ssrc);
+        rtcp_sdes->chunks.type = (uint8_t) SdesType::RTCP_SDES_CNAME;
+        rtcp_sdes->chunks.ssrc = htonl(ssrc);
         send_rtcp(this, track_index, std::move(rtcp));
         send_rtcp(this, track_index, RtcpHeader::toBuffer(rtcp_sdes));
     }

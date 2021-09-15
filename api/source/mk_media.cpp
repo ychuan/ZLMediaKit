@@ -43,6 +43,16 @@ public:
         _on_seek_data = user_data;
     }
 
+    void setOnPause(on_mk_media_pause cb, void* user_data) {
+        _on_pause = cb;
+        _on_pause_data = user_data;
+    }
+
+    void setOnSpeed(on_mk_media_speed cb, void* user_data) {
+        _on_speed = cb;
+        _on_speed_data = user_data;
+    }
+
     void setOnRegist(on_mk_media_source_regist cb, void *user_data){
         _on_regist = cb;
         _on_regist_data = user_data;
@@ -66,12 +76,29 @@ protected:
         return true;
     }
 
-    bool seekTo(MediaSource &sender,uint32_t ui32Stamp) override{
-        if(!_on_seek){
+    bool seekTo(MediaSource &sender, uint32_t stamp) override {
+        if (!_on_seek) {
             return false;
         }
-        return _on_seek(_on_seek_data,ui32Stamp);
+        return _on_seek(_on_seek_data, stamp);
     }
+
+    // 通知暂停或恢复
+    bool pause(MediaSource &sender, bool pause) override {
+        if (!_on_pause) {
+            return false;
+        }
+        return _on_pause(_on_pause_data, pause);
+    }
+
+    //通知倍数播放
+    bool speed(MediaSource &sender, float speed) override {
+        if (!_on_speed) {
+            return false;
+        }
+        return _on_speed(_on_speed_data, speed);
+    }
+
     // 观看总人数
     int totalReaderCount(MediaSource &sender) override{
         return _channel->totalReaderCount();
@@ -87,8 +114,12 @@ private:
     DevChannel::Ptr _channel;
     on_mk_media_close _on_close = nullptr;
     on_mk_media_seek _on_seek = nullptr;
+    on_mk_media_pause _on_pause = nullptr;
+    on_mk_media_speed _on_speed = nullptr;
     on_mk_media_source_regist _on_regist = nullptr;
-    void *_on_seek_data;
+    void* _on_seek_data;
+    void* _on_pause_data;
+    void* _on_speed_data;
     void *_on_close_data;
     void *_on_regist_data;
 };
@@ -99,10 +130,22 @@ API_EXPORT void API_CALL mk_media_set_on_close(mk_media ctx, on_mk_media_close c
     (*obj)->setOnClose(cb, user_data);
 }
 
-API_EXPORT void API_CALL mk_media_set_on_seek(mk_media ctx, on_mk_media_seek cb, void *user_data){
+API_EXPORT void API_CALL mk_media_set_on_seek(mk_media ctx, on_mk_media_seek cb, void *user_data) {
     assert(ctx);
     MediaHelper::Ptr *obj = (MediaHelper::Ptr *) ctx;
     (*obj)->setOnSeek(cb, user_data);
+}
+
+API_EXPORT void API_CALL mk_media_set_on_pause(mk_media ctx, on_mk_media_pause cb, void *user_data) {
+    assert(ctx);
+    MediaHelper::Ptr *obj = (MediaHelper::Ptr *) ctx;
+    (*obj)->setOnPause(cb, user_data);
+}
+
+API_EXPORT void API_CALL mk_media_set_on_speed(mk_media ctx, on_mk_media_speed cb, void *user_data) {
+    assert(ctx);
+    MediaHelper::Ptr *obj = (MediaHelper::Ptr *) ctx;
+    (*obj)->setOnSpeed(cb, user_data);
 }
 
 API_EXPORT void API_CALL mk_media_set_on_regist(mk_media ctx, on_mk_media_source_regist cb, void *user_data){
@@ -193,16 +236,16 @@ API_EXPORT void API_CALL mk_media_start_send_rtp(mk_media ctx, const char *dst_u
     assert(ctx && dst_url && ssrc);
     MediaHelper::Ptr* obj = (MediaHelper::Ptr*) ctx;
     //sender参数无用
-    (*obj)->getChannel()->startSendRtp(*(MediaSource *) 1, dst_url, dst_port, ssrc, is_udp, 0, [cb, user_data](uint16_t local_port, const SockException &ex){
+    (*obj)->getChannel()->startSendRtp(*MediaSource::NullMediaSource, dst_url, dst_port, ssrc, is_udp, 0, [cb, user_data](uint16_t local_port, const SockException &ex){
         if (cb) {
             cb(user_data, local_port, ex.getErrCode(), ex.what());
         }
     });
 }
 
-API_EXPORT int API_CALL mk_media_stop_send_rtp(mk_media ctx){
+API_EXPORT int API_CALL mk_media_stop_send_rtp(mk_media ctx, const char *ssrc){
     assert(ctx);
     MediaHelper::Ptr *obj = (MediaHelper::Ptr *) ctx;
     //sender参数无用
-    return (*obj)->getChannel()->stopSendRtp(*(MediaSource *) 1, "");
+    return (*obj)->getChannel()->stopSendRtp(*MediaSource::NullMediaSource, ssrc ? ssrc : "");
 }

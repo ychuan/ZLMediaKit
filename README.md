@@ -92,9 +92,12 @@
   - RTSP/RTMP/HTTP-FLV/WS-FLV支持MP4文件点播，支持seek
   - 支持H264/H265/AAC/G711/OPUS编码
   
-- WebRTC(体验,请使用dev分支)
+- WebRTC
   - 支持WebRTC推流，支持转其他协议
   - 支持WebRTC播放，支持其他协议转WebRTC     
+  - 支持simulcast
+  - 支持rtx/nack
+  - **支持单端口、多线程、客户端网络连接迁移(开源界唯一)**。
   
 - 其他
   - 支持丰富的restful api以及web hook事件 
@@ -138,13 +141,14 @@ bash build_docker_images.sh
 ## 合作项目
 
  - 可视化管理网站
-    - [一个非常漂亮的可视化后台管理系统](https://github.com/MingZhuLiu/ZLMediaServerManagent)
+    - [最新的前后端分离web项目,支持webrtc播放](https://github.com/langmansh/AKStreamNVR)
     - [基于ZLMediaKit主线的管理WEB网站](https://gitee.com/kkkkk5G/MediaServerUI) 
     - [基于ZLMediaKit分支的管理WEB网站](https://github.com/chenxiaolei/ZLMediaKit_NVR_UI)
+    - [一个非常漂亮的可视化后台管理系统](https://github.com/MingZhuLiu/ZLMediaServerManagent)
     
  - 流媒体管理平台
-   - [功能强大的流媒体控制管理接口平台,支持GB28181](https://github.com/chatop2020/StreamNode)
-   - [GB28181-2016网络视频平台](https://github.com/648540858/wvp-GB28181-pro)
+   - [GB28181完整解决方案,自带web管理网站,支持webrtc、h265播放](https://github.com/648540858/wvp-GB28181-pro)
+   - [功能强大的流媒体控制管理接口平台,支持GB28181](https://github.com/chatop2020/AKStream)
    - [node-js版本的GB28181平台](https://gitee.com/hfwudao/GB28181_Node_Http)
    - [Go实现的海康ehome服务器](https://github.com/tsingeye/FreeEhome)
 
@@ -163,7 +167,7 @@ bash build_docker_images.sh
 ## 联系方式
 
  - 邮箱：<1213642868@qq.com>(本项目相关或流媒体相关问题请走issue流程，否则恕不邮件答复)
- - QQ群：542509000
+ - QQ群：690854210
 
 ## 怎么提问？
 
@@ -218,28 +222,22 @@ bash build_docker_images.sh
 [mirs](fangpengcheng@bilibili.com>)
 [Kevin Cheng](kevin__cheng@outlook.com>)
 [Liu Jiang](root@oopy.org>)
-[along](alongl@users.noreply.github.com>)
+[along](https://github.com/alongl)
 [qingci](xpy66swsry@gmail.com>)
 [lyg1949](zh.ghlong@qq.com>)
 [zhlong](zh.ghlong@qq.com>)
-[Luke](automan@easydarwin.org>)
 [大裤衩](3503207480@qq.com>)
 [droid.chow](droid.chow@gmail.com>)
 [陈晓林](https://github.com/musicwood)
+[CharleyWangHZ](https://github.com/CharleyWangHZ)
+[Johnny](https://github.com/johzzy)
+[DoubleX69](https://github.com/DoubleX69)
+[lawrencehj](https://github.com/lawrencehj)
+[yangkun](xyyangkun@163.com)
+[Xinghua Zhao](holychaossword@hotmail.com)
 
 ## 使用案例
 
 本项目已经得到不少公司和个人开发者的认可，据作者不完全统计，
 使用本项目的公司包括知名的互联网巨头、国内排名前列的云服务公司、多家知名的AI独角兽公司，
 以及一系列中小型公司。使用者可以通过在 [issue](https://github.com/xia-chu/ZLMediaKit/issues/511) 上粘贴公司的大名和相关项目介绍为本项目背书，感谢支持！
-
-
-## 捐赠
-
-您的捐赠将用于支付该项目的一些费用支出以及激励开发者，
-欢迎捐赠以便更好的推动项目的发展，谢谢您的支持!
-同时欢迎捐赠公网服务器用于在线展示效果。
-
-[支付宝](https://gitee.com/xia-chu/other/raw/master/IMG_3919.JPG)
-
-[微信](https://gitee.com/xia-chu/other/raw/master/IMG_3920.JPG)

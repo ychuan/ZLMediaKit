@@ -115,12 +115,57 @@ public:
 
 class RtmpHeader {
 public:
-    uint8_t flags;
+#if __BYTE_ORDER == __BIG_ENDIAN
+    uint8_t fmt : 2;
+    uint8_t chunk_id : 6;
+#else
+    uint8_t chunk_id : 6;
+    //0、1、2、3分别对应 12、8、4、1长度
+    uint8_t fmt : 2;
+#endif
     uint8_t time_stamp[3];
     uint8_t body_size[3];
     uint8_t type_id;
     uint8_t stream_index[4]; /* Note, this is little-endian while others are BE */
 }PACKED;
+
+class FLVHeader {
+public:
+    //FLV
+    char flv[3];
+    //File version (for example, 0x01 for FLV version 1)
+    uint8_t version;
+#if __BYTE_ORDER == __BIG_ENDIAN
+    //保留,置0
+    uint8_t : 5;
+    //是否有音频
+    uint8_t have_audio: 1;
+    //保留,置0
+    uint8_t : 1;
+    //是否有视频
+    uint8_t have_video: 1;
+#else
+    //是否有视频
+    uint8_t have_video: 1;
+    //保留,置0
+    uint8_t : 1;
+    //是否有音频
+    uint8_t have_audio: 1;
+    //保留,置0
+    uint8_t : 5;
+#endif
+    //The length of this header in bytes,固定为9
+    uint32_t length;
+} PACKED;
+
+class RtmpTagHeader {
+public:
+    uint8_t type = 0;
+    uint8_t data_size[3] = {0};
+    uint8_t timestamp[3] = {0};
+    uint8_t timestamp_ex = 0;
+    uint8_t streamid[3] = {0}; /* Always 0. */
+} PACKED;
 
 #if defined(_WIN32)
 #pragma pack(pop)
@@ -259,7 +304,7 @@ public:
               size_t fileSize = 0,
               const map<string,string> &header = map<string,string>()){
         _metadata.set("duration", dur_sec);
-        _metadata.set("fileSize", 0);
+        _metadata.set("fileSize", (int)fileSize);
         _metadata.set("server",SERVER_NAME);
         for (auto &pr : header){
             _metadata.set(pr.first, pr.second);

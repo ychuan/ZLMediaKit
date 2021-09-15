@@ -22,24 +22,50 @@ using namespace toolkit;
 namespace mediakit{
 
 typedef enum {
-    CodecInvalid = -1,
-    CodecH264 = 0,
-    CodecH265,
-    CodecAAC,
-    CodecG711A,
-    CodecG711U,
-    CodecOpus,
-    CodecL16,
-    CodecMax = 0x7FFF
-} CodecId;
-
-typedef enum {
     TrackInvalid = -1,
     TrackVideo = 0,
     TrackAudio,
     TrackTitle,
-    TrackMax = 3
+    TrackApplication,
+    TrackMax
 } TrackType;
+
+#define CODEC_MAP(XX) \
+    XX(CodecH264,  TrackVideo, 0, "H264")          \
+    XX(CodecH265,  TrackVideo, 1, "H265")          \
+    XX(CodecAAC,   TrackAudio, 2, "mpeg4-generic") \
+    XX(CodecG711A, TrackAudio, 3, "PCMA")          \
+    XX(CodecG711U, TrackAudio, 4, "PCMU")          \
+    XX(CodecOpus,  TrackAudio, 5, "opus")          \
+    XX(CodecL16,   TrackAudio, 6, "L16")           \
+    XX(CodecVP8,   TrackVideo, 7, "VP8")           \
+    XX(CodecVP9,   TrackVideo, 8, "VP9")           \
+    XX(CodecAV1,   TrackVideo, 9, "AV1X")
+
+typedef enum {
+    CodecInvalid = -1,
+#define XX(name, type, value, str) name = value,
+    CODEC_MAP(XX)
+#undef XX
+    CodecMax
+} CodecId;
+
+/**
+ * 字符串转媒体类型转
+ */
+TrackType getTrackType(const string &str);
+
+/**
+ * 媒体类型转字符串
+ */
+const char* getTrackString(TrackType type);
+
+/**
+ * 根据SDP中描述获取codec_id
+ * @param str
+ * @return
+ */
+CodecId getCodecId(const string &str);
 
 /**
  * 获取编码器名称
@@ -69,12 +95,12 @@ public:
     /**
      * 获取编码器名称
      */
-    const char *getCodecName();
+    const char *getCodecName() const;
 
     /**
      * 获取音视频类型
      */
-    TrackType getTrackType();
+    TrackType getTrackType() const;
 };
 
 /**
@@ -119,6 +145,26 @@ public:
     virtual bool cacheAble() const { return true; }
 
     /**
+     * 该帧是否可以丢弃
+     * SEI/AUD帧可以丢弃
+     * 默认都不能丢帧
+     */
+    virtual bool dropAble() const { return false; }
+
+    /**
+     * 是否为可解码帧
+     * sps pps等帧不能解码
+     */
+    virtual bool decodeAble() const {
+        if (getTrackType() != TrackVideo) {
+            //非视频帧都可以解码
+            return true;
+        }
+        //默认非sps pps帧都可以解码
+        return !configFrame();
+    }
+
+    /**
      * 返回可缓存的frame
      */
     static Ptr getCacheAbleFrame(const Ptr &frame);
@@ -133,7 +179,22 @@ public:
     using Ptr = std::shared_ptr<FrameImp>;
 
     template<typename C=FrameImp>
-    static std::shared_ptr<C> create();
+    static std::shared_ptr<C> create() {
+#if 0
+        static ResourcePool<C> packet_pool;
+        static onceToken token([]() {
+            packet_pool.setSize(1024);
+        });
+        auto ret = packet_pool.obtain();
+        ret->_buffer.clear();
+        ret->_prefix_size = 0;
+        ret->_dts = 0;
+        ret->_pts = 0;
+        return ret;
+#else
+        return std::shared_ptr<C>(new C());
+#endif
+    }
 
     char *data() const override{
         return (char *)_buffer.data();
@@ -181,9 +242,6 @@ private:
 protected:
     friend class ResourcePool_l<FrameImp>;
     FrameImp() = default;
-
-    template<typename C>
-    static std::shared_ptr<C> create_l();
 };
 
 /**
@@ -433,7 +491,8 @@ private:
  */
 class FrameMerger {
 public:
-    using onOutput = function<void(uint32_t dts, uint32_t pts, const Buffer::Ptr &buffer, bool have_idr)>;
+    using onOutput = function<void(uint32_t dts, uint32_t pts, const Buffer::Ptr &buffer, bool have_key_frame)>;
+    using Ptr = std::shared_ptr<FrameMerger>;
     enum {
         none = 0,
         h264_prefix,
@@ -444,7 +503,7 @@ public:
     ~FrameMerger() = default;
 
     void clear();
-    void inputFrame(const Frame::Ptr &frame, const onOutput &cb);
+    void inputFrame(const Frame::Ptr &frame, const onOutput &cb, BufferLikeString *buffer = nullptr);
 
 private:
     bool willFlush(const Frame::Ptr &frame) const;
@@ -452,7 +511,8 @@ private:
 
 private:
     int _type;
-    List<Frame::Ptr> _frameCached;
+    bool _have_decode_able_frame = false;
+    List<Frame::Ptr> _frame_cache;
 };
 
 }//namespace mediakit

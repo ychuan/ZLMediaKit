@@ -50,53 +50,6 @@ bool getHEVCInfo(const string &strVps, const string &strSps, int &iVideoWidth, i
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool H265Frame::keyFrame() const {
-    return isKeyFrame(H265_TYPE(_buffer[_prefix_size]));
-}
-
-bool H265Frame::configFrame() const {
-    switch (H265_TYPE(_buffer[_prefix_size])) {
-        case H265Frame::NAL_VPS:
-        case H265Frame::NAL_SPS:
-        case H265Frame::NAL_PPS : return true;
-        default : return false;
-    }
-}
-
-bool H265Frame::isKeyFrame(int type) {
-    return type >= NAL_BLA_W_LP && type <= NAL_RSV_IRAP_VCL23;
-}
-
-H265Frame::H265Frame(){
-    _codec_id = CodecH265;
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-H265FrameNoCacheAble::H265FrameNoCacheAble(char *ptr, size_t size, uint32_t dts, uint32_t pts, size_t prefix_size) {
-    _ptr = ptr;
-    _size = size;
-    _dts = dts;
-    _pts = pts;
-    _prefix_size = prefix_size;
-    _codec_id = CodecH265;
-}
-
-bool H265FrameNoCacheAble::keyFrame() const {
-    return H265Frame::isKeyFrame(H265_TYPE(((uint8_t *) _ptr)[_prefix_size]));
-}
-
-bool H265FrameNoCacheAble::configFrame() const {
-    switch (H265_TYPE(((uint8_t *) _ptr)[_prefix_size])) {
-        case H265Frame::NAL_VPS:
-        case H265Frame::NAL_SPS:
-        case H265Frame::NAL_PPS: return true;
-        default: return false;
-    }
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 H265Track::H265Track(const string &vps,const string &sps, const string &pps,int vps_prefix_len, int sps_prefix_len, int pps_prefix_len) {
     _vps = vps.substr(vps_prefix_len);
     _sps = sps.substr(sps_prefix_len);
@@ -138,8 +91,7 @@ bool H265Track::ready() {
 
 void H265Track::inputFrame(const Frame::Ptr &frame) {
     using H265FrameInternal = FrameInternal<H265FrameNoCacheAble>;
-
-    int type = H265_TYPE(*((uint8_t *) frame->data() + frame->prefixSize()));
+    int type = H265_TYPE( frame->data()[frame->prefixSize()]);
     if (frame->configFrame() || type == H265Frame::NAL_SEI_PREFIX) {
         splitH264(frame->data(), frame->size(), frame->prefixSize(), [&](const char *ptr, size_t len, size_t prefix) {
             H265FrameInternal::Ptr sub_frame = std::make_shared<H265FrameInternal>(frame, (char *) ptr, len, prefix);
@@ -151,8 +103,7 @@ void H265Track::inputFrame(const Frame::Ptr &frame) {
 }
 
 void H265Track::inputFrame_l(const Frame::Ptr &frame) {
-    int type = H265_TYPE(((uint8_t *) frame->data() + frame->prefixSize())[0]);
-    if (H265Frame::isKeyFrame(type)) {
+    if (frame->keyFrame()) {
         insertConfigFrame(frame);
         VideoTrack::inputFrame(frame);
         _is_idr = true;
@@ -160,9 +111,8 @@ void H265Track::inputFrame_l(const Frame::Ptr &frame) {
     }
 
     _is_idr = false;
-
     //非idr帧
-    switch (type) {
+    switch (H265_TYPE( frame->data()[frame->prefixSize()])) {
         case H265Frame::NAL_VPS: {
             _vps = string(frame->data() + frame->prefixSize(), frame->size() - frame->prefixSize());
             break;
@@ -252,7 +202,7 @@ public:
         if (bitrate) {
             _printer << "b=AS:" << bitrate << "\r\n";
         }
-        _printer << "a=rtpmap:" << payload_type << " H265/" << 90000 << "\r\n";
+        _printer << "a=rtpmap:" << payload_type << " " << getCodecName() << "/" << 90000 << "\r\n";
         _printer << "a=fmtp:" << payload_type << " ";
         _printer << "sprop-vps=";
         _printer << encodeBase64(strVPS) << "; ";

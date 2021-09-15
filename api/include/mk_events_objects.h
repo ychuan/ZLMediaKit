@@ -47,8 +47,6 @@ typedef void* mk_parser;
 API_EXPORT const char* API_CALL mk_parser_get_method(const mk_parser ctx);
 //Parser::Url(),获取HTTP的访问url(不包括?后面的参数)
 API_EXPORT const char* API_CALL mk_parser_get_url(const mk_parser ctx);
-//Parser::FullUrl(),包括?后面的参数
-API_EXPORT const char* API_CALL mk_parser_get_full_url(const mk_parser ctx);
 //Parser::Params(),?后面的参数字符串
 API_EXPORT const char* API_CALL mk_parser_get_url_params(const mk_parser ctx);
 //Parser::getUrlArgs()["key"],获取?后面的参数中的特定参数
@@ -133,7 +131,8 @@ API_EXPORT void API_CALL mk_media_source_find(const char *schema,
                                               void *user_data,
                                               on_mk_media_source_find_cb cb);
 //MediaSource::for_each_media()
-API_EXPORT void API_CALL mk_media_source_for_each(void *user_data, on_mk_media_source_find_cb cb);
+API_EXPORT void API_CALL mk_media_source_for_each(void *user_data, on_mk_media_source_find_cb cb, const char *schema,
+                                                  const char *vhost, const char *app, const char *stream);
 
 ///////////////////////////////////////////HttpBody/////////////////////////////////////////////
 //HttpBody对象的C映射

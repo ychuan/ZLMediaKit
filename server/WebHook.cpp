@@ -42,7 +42,9 @@ const string kOnShellLogin = HOOK_FIELD"on_shell_login";
 const string kOnStreamNoneReader = HOOK_FIELD"on_stream_none_reader";
 const string kOnHttpAccess = HOOK_FIELD"on_http_access";
 const string kOnServerStarted = HOOK_FIELD"on_server_started";
+const string kOnServerKeepalive = HOOK_FIELD"on_server_keepalive";
 const string kAdminParams = HOOK_FIELD"admin_params";
+const string kAliveInterval = HOOK_FIELD"alive_interval";
 
 onceToken token([](){
     mINI::Instance()[kEnable] = false;
@@ -61,7 +63,9 @@ onceToken token([](){
     mINI::Instance()[kOnStreamNoneReader] = "";
     mINI::Instance()[kOnHttpAccess] = "";
     mINI::Instance()[kOnServerStarted] = "";
+    mINI::Instance()[kOnServerKeepalive] = "";
     mINI::Instance()[kAdminParams] = "secret=035c73f7-bb6b-4889-a715-d9eb2d1925cc";
+    mINI::Instance()[kAliveInterval] = 30.0;
 },nullptr);
 }//namespace Hook
 
@@ -113,6 +117,17 @@ const char *getContentType(const HttpArgs &value){
     return "application/x-www-form-urlencoded";
 }
 
+string getVhost(const Value &value) {
+    const char *key = VHOST_KEY;
+    auto val = value.find(key, key + sizeof(VHOST_KEY) - 1);
+    return val ? val->asString() : "";
+}
+
+string getVhost(const HttpArgs &value) {
+    auto val = value.find(VHOST_KEY);
+    return val != value.end() ? val->second : "";
+}
+
 void do_http_hook(const string &url,const ArgsType &body,const function<void(const Value &,const string &)> &func){
     GET_CONFIG(string, mediaServerId, General::kMediaServerId);
     GET_CONFIG(float, hook_timeoutSec, Hook::kTimeoutSec);
@@ -123,6 +138,10 @@ void do_http_hook(const string &url,const ArgsType &body,const function<void(con
     auto bodyStr = to_string(body);
     requester->setBody(bodyStr);
     requester->addHeader("Content-Type", getContentType(body));
+    auto vhost = getVhost(body);
+    if (!vhost.empty()) {
+        requester->addHeader("X-VHOST", vhost);
+    }
     std::shared_ptr<Ticker> pTicker(new Ticker);
     requester->startRequester(url, [url, func, bodyStr, requester, pTicker](const SockException &ex,
                                                                             const string &status,
@@ -147,7 +166,7 @@ void do_http_hook(const string &url,const ArgsType &body,const function<void(con
 static ArgsType make_json(const MediaInfo &args){
     ArgsType body;
     body["schema"] = args._schema;
-    body["vhost"] = args._vhost;
+    body[VHOST_KEY] = args._vhost;
     body["app"] = args._app;
     body["stream"] = args._streamid;
     body["params"] = args._param_strs;
@@ -167,6 +186,27 @@ static void reportServerStarted(){
     }
     //执行hook
     do_http_hook(hook_server_started,body, nullptr);
+}
+
+// 服务器定时保活定时器
+static Timer::Ptr g_keepalive_timer;
+static void reportServerKeepalive() {
+    GET_CONFIG(bool, hook_enable, Hook::kEnable);
+    GET_CONFIG(string, hook_server_keepalive, Hook::kOnServerKeepalive);
+    if (!hook_enable || hook_server_keepalive.empty()) {
+        return;
+    }
+
+    GET_CONFIG(float, alive_interval, Hook::kAliveInterval);
+    g_keepalive_timer = std::make_shared<Timer>(alive_interval, []() {
+        ArgsType body;
+        body["data"] = getStatisticJson();
+
+        //执行hook
+        do_http_hook(hook_server_keepalive, body, nullptr);
+
+        return true;
+    }, nullptr);
 }
 
 void installWebHook(){
@@ -306,7 +346,7 @@ void installWebHook(){
             body["regist"] = bRegist;
         } else {
             body["schema"] = sender.getSchema();
-            body["vhost"] = sender.getVhost();
+            body[VHOST_KEY] = sender.getVhost();
             body["app"] = sender.getApp();
             body["stream"] = sender.getId();
             body["regist"] = bRegist;
@@ -342,7 +382,7 @@ void installWebHook(){
         body["url"] = info.url;
         body["app"] = info.app;
         body["stream"] = info.stream;
-        body["vhost"] = info.vhost;
+        body[VHOST_KEY] = info.vhost;
         return body;
     };
 
@@ -394,7 +434,7 @@ void installWebHook(){
 
         ArgsType body;
         body["schema"] = sender.getSchema();
-        body["vhost"] = sender.getVhost();
+        body[VHOST_KEY] = sender.getVhost();
         body["app"] = sender.getApp();
         body["stream"] = sender.getId();
         weak_ptr<MediaSource> weakSrc = sender.shared_from_this();
@@ -406,6 +446,11 @@ void installWebHook(){
                 return;
             }
             strongSrc->close(false);
+            WarnL << "无人观看主动关闭流:"
+                  << strongSrc->getSchema() << "/"
+                  << strongSrc->getVhost() << "/"
+                  << strongSrc->getApp() << "/"
+                  << strongSrc->getId();
         });
     });
 
@@ -464,8 +509,11 @@ void installWebHook(){
 
     //汇报服务器重新启动
     reportServerStarted();
+
+    //定时上报保活
+    reportServerKeepalive();
 }
 
 void unInstallWebHook(){
-
+    g_keepalive_timer.reset();
 }

@@ -38,6 +38,16 @@ void HttpSession::Handle_Req_HEAD(ssize_t &content_len){
     sendResponse(200, true);
 }
 
+void HttpSession::Handle_Req_OPTIONS(ssize_t &content_len) {
+    KeyValue header;
+    header.emplace("Allow", "GET, POST, OPTIONS");
+    header.emplace("Access-Control-Allow-Origin", "*");
+    header.emplace("Access-Control-Allow-Credentials", "true");
+    header.emplace("Access-Control-Request-Methods", "GET, POST, OPTIONS");
+    header.emplace("Access-Control-Request-Headers", "Accept,Accept-Language,Content-Language,Content-Type");
+    sendResponse(200, true, nullptr, header);
+}
+
 ssize_t HttpSession::onRecvHeader(const char *header,size_t len) {
     typedef void (HttpSession::*HttpCMDHandle)(ssize_t &);
     static unordered_map<string, HttpCMDHandle> s_func_map;
@@ -45,9 +55,12 @@ ssize_t HttpSession::onRecvHeader(const char *header,size_t len) {
         s_func_map.emplace("GET",&HttpSession::Handle_Req_GET);
         s_func_map.emplace("POST",&HttpSession::Handle_Req_POST);
         s_func_map.emplace("HEAD",&HttpSession::Handle_Req_HEAD);
+        s_func_map.emplace("OPTIONS",&HttpSession::Handle_Req_OPTIONS);
     }, nullptr);
 
     _parser.Parse(header);
+    CHECK(_parser.Url()[0] == '/');
+
     urlDecode(_parser);
     string cmd = _parser.Method();
     auto it = s_func_map.find(cmd);
@@ -89,9 +102,9 @@ void HttpSession::onRecv(const Buffer::Ptr &pBuf) {
 }
 
 void HttpSession::onError(const SockException& err) {
-    if(_is_live_stream){
-        uint64_t duration = _ticker.createdTime()/1000;
+    if (_is_live_stream) {
         //flv/ts播放器
+        uint64_t duration = _ticker.createdTime() / 1000;
         WarnP(this) << "FLV/TS/FMP4播放器("
                     << _mediaInfo._vhost << "/"
                     << _mediaInfo._app << "/"
@@ -99,19 +112,16 @@ void HttpSession::onError(const SockException& err) {
                     << ")断开:" << err.what()
                     << ",耗时(s):" << duration;
 
-        GET_CONFIG(uint32_t,iFlowThreshold,General::kFlowThreshold);
-        if(_total_bytes_usage >= iFlowThreshold * 1024){
-            NoticeCenter::Instance().emitEvent(Broadcast::kBroadcastFlowReport, _mediaInfo, _total_bytes_usage, duration , true, static_cast<SockInfo &>(*this));
+        GET_CONFIG(uint32_t, iFlowThreshold, General::kFlowThreshold);
+        if (_total_bytes_usage >= iFlowThreshold * 1024) {
+            NoticeCenter::Instance().emitEvent(Broadcast::kBroadcastFlowReport, _mediaInfo, _total_bytes_usage,
+                                               duration, true, static_cast<SockInfo &>(*this));
         }
         return;
     }
 
     //http客户端
-    if(_ticker.createdTime() < 10 * 1000){
-        TraceP(this) << err.what();
-    }else{
-        WarnP(this) << err.what();
-    }
+    TraceP(this) << err.what();
 }
 
 void HttpSession::onManager() {
@@ -119,7 +129,7 @@ void HttpSession::onManager() {
 
     if(_ticker.elapsedTime() > keepAliveSec * 1000){
         //1分钟超时
-        shutdown(SockException(Err_timeout,"session timeouted"));
+        shutdown(SockException(Err_timeout,"session timeout"));
     }
 }
 
@@ -177,16 +187,19 @@ bool HttpSession::checkLiveStream(const string &schema, const string  &url_suffi
         return false;
     }
 
-    //这是个符合后缀的直播的流
-    _mediaInfo.parse(schema + "://" + _parser["Host"] + _parser.FullUrl());
-    if (_mediaInfo._app.empty() || _mediaInfo._streamid.size() < url_suffix.size() + 1) {
+    //url去除特殊后缀
+    auto url = _parser.Url().substr(0, _parser.Url().size() - url_suffix.size());
+    //带参数的url
+    url = _parser.Params().empty() ? url : (url + "?" + _parser.Params());
+    //解析带上协议+参数完整的url
+    _mediaInfo.parse(schema + "://" + _parser["Host"] + url);
+
+    if (_mediaInfo._app.empty() || _mediaInfo._streamid.empty()) {
         //url不合法
         return false;
     }
-    //去除后缀
+
     bool close_flag = !strcasecmp(_parser["Connection"].data(), "close");
-    //流id去除后缀
-    _mediaInfo._streamid.erase(_mediaInfo._streamid.size() - url_suffix.size());
     weak_ptr<HttpSession> weak_self = dynamic_pointer_cast<HttpSession>(shared_from_this());
 
     //鉴权结果回调

@@ -43,13 +43,18 @@ public:
     }
 
 private:
+    bool singleFrame(const RtpPacket::Ptr &rtp, const uint8_t *ptr, ssize_t size, uint32_t stamp);
+    bool unpackStapA(const RtpPacket::Ptr &rtp, const uint8_t *ptr, ssize_t size, uint32_t stamp);
+    bool mergeFu(const RtpPacket::Ptr &rtp, const uint8_t *ptr, ssize_t size, uint32_t stamp, uint16_t seq);
+
     bool decodeRtp(const RtpPacket::Ptr &rtp);
-    void onGetH264(const H264Frame::Ptr &frame);
     H264Frame::Ptr obtainFrame();
+    void outputFrame(const RtpPacket::Ptr &rtp, const H264Frame::Ptr &frame);
 
 private:
+    bool _gop_dropped = false;
+    bool _fu_dropped = true;
     uint16_t _last_seq = 0;
-    size_t _max_frame_size = 0;
     H264Frame::Ptr _frame;
     DtsGenerator _dts_generator;
 };
@@ -82,7 +87,16 @@ public:
     void inputFrame(const Frame::Ptr &frame) override;
 
 private:
-    void makeH264Rtp(const void *pData, size_t uiLen, bool bMark,  bool gop_pos, uint32_t uiStamp);
+    void insertConfigFrame(uint32_t pts);
+    void inputFrame_l(const Frame::Ptr &frame, bool is_mark);
+    void packRtp(const char *data, size_t len, uint32_t pts, bool is_mark, bool gop_pos);
+    void packRtpFu(const char *data, size_t len, uint32_t pts, bool is_mark, bool gop_pos);
+    void packRtpStapA(const char *data, size_t len, uint32_t pts, bool is_mark, bool gop_pos);
+
+private:
+    Frame::Ptr _sps;
+    Frame::Ptr _pps;
+    Frame::Ptr _last_frame;
 };
 
 }//namespace mediakit{
