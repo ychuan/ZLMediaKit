@@ -243,6 +243,10 @@ bool is_rtcp(char *buf) {
     return ((header->pt >= 64) && (header->pt < 96));
 }
 
+static string getPeerAddress(RTC::TransportTuple *tuple){
+    return SockUtil::inet_ntoa(((struct sockaddr_in *)tuple)->sin_addr) + ":" + to_string(ntohs(((struct sockaddr_in *)tuple)->sin_port));
+}
+
 void WebRtcTransport::inputSockData(char *buf, int len, RTC::TransportTuple *tuple) {
     if (RTC::StunPacket::IsStun((const uint8_t *) buf, len)) {
         std::unique_ptr<RTC::StunPacket> packet(RTC::StunPacket::Parse((const uint8_t *) buf, len));
@@ -258,12 +262,20 @@ void WebRtcTransport::inputSockData(char *buf, int len, RTC::TransportTuple *tup
         return;
     }
     if (is_rtp(buf)) {
+        if (!_srtp_session_recv) {
+            WarnL << "received rtp packet when dtls not completed from:" << getPeerAddress(tuple);
+            return;
+        }
         if (_srtp_session_recv->DecryptSrtp((uint8_t *) buf, &len)) {
             onRtp(buf, len);
         }
         return;
     }
     if (is_rtcp(buf)) {
+        if (!_srtp_session_recv) {
+            WarnL << "received rtcp packet when dtls not completed from:" << getPeerAddress(tuple);
+            return;
+        }
         if (_srtp_session_recv->DecryptSrtcp((uint8_t *) buf, &len)) {
             onRtcp(buf, len);
         }
@@ -382,6 +394,8 @@ void WebRtcTransportImp::onSendSockData(const char *buf, size_t len, struct sock
     }
     auto ptr = BufferRaw::create();
     ptr->assign(buf, len);
+    //一次性发送一帧的rtp数据，提高网络io性能
+    _session->setSendFlushFlag(flush);
     _session->send(std::move(ptr));
 }
 
@@ -470,6 +484,21 @@ void WebRtcTransportImp::onStartWebRTC() {
         _simulcast = getSdp(SdpType::answer).supportSimulcast();
     }
     if (canSendRtp()) {
+        RtcSession rtsp_send_sdp;
+        rtsp_send_sdp.loadFrom(_play_src->getSdp(), false);
+        for (auto &m : getSdp(SdpType::answer).media) {
+            if (m.type == TrackApplication) {
+                continue;
+            }
+            auto rtsp_media = rtsp_send_sdp.getMedia(m.type);
+            if (rtsp_media && getCodecId(rtsp_media->plan[0].codec) == getCodecId(m.plan[0].codec)) {
+                auto it = _pt_to_track.find(m.plan[0].pt);
+                CHECK(it != _pt_to_track.end());
+                //记录发送rtp时约定的信息，届时发送rtp时需要修改pt和ssrc
+                _type_to_track[m.type] = it->second.second;
+            }
+        }
+
         _reader = _play_src->getRing()->attach(getPoller(), true);
         weak_ptr<WebRtcTransportImp> weak_self = static_pointer_cast<WebRtcTransportImp>(shared_from_this());
         _reader->setReadCB([weak_self](const RtspMediaSource::RingDataType &pkt) {
@@ -489,21 +518,6 @@ void WebRtcTransportImp::onStartWebRTC() {
             }
             strongSelf->onShutdown(SockException(Err_shutdown, "rtsp ring buffer detached"));
         });
-
-        RtcSession rtsp_send_sdp;
-        rtsp_send_sdp.loadFrom(_play_src->getSdp(), false);
-        for (auto &m : getSdp(SdpType::answer).media) {
-            if (m.type == TrackApplication) {
-                continue;
-            }
-            auto rtsp_media = rtsp_send_sdp.getMedia(m.type);
-            if (rtsp_media && getCodecId(rtsp_media->plan[0].codec) == getCodecId(m.plan[0].codec)) {
-                auto it = _pt_to_track.find(m.plan[0].pt);
-                CHECK(it != _pt_to_track.end());
-                //记录发送rtp时约定的信息，届时发送rtp时需要修改pt和ssrc
-                _type_to_track[m.type] = it->second.second;
-            }
-        }
     }
     //使用完毕后，释放强引用，这样确保推流器断开后能及时注销媒体
     _play_src = nullptr;
