@@ -300,6 +300,20 @@ void RtspPlayer::handleResSETUP(const Parser &parser, unsigned int track_idx) {
             if (-1 == SockUtil::joinMultiAddrFilter(fd, multiAddr.data(), get_peer_ip().data(),get_local_ip().data())) {
                 SockUtil::joinMultiAddr(fd, multiAddr.data(),get_local_ip().data());
             }
+
+            //设置rtcp发送端口
+            pRtcpSockRef = createSocket();
+            if (!pRtcpSockRef->bindUdpSock(0, "0.0.0.0")) {
+                //分配端口失败
+                throw runtime_error("open udp socket failed");
+            }
+
+            //设置发送地址和发送端口
+            struct sockaddr_in rtpto;
+            rtpto.sin_port = ntohs(rtcp_port);
+            rtpto.sin_family = AF_INET;
+            rtpto.sin_addr.s_addr = inet_addr(get_peer_ip().data());
+            pRtcpSockRef->bindPeerAddr((struct sockaddr *)&(rtpto));
         } else {
             createUdpSockIfNecessary(track_idx);
             //udp单播
@@ -693,7 +707,7 @@ void RtspPlayer::onPlayResult_l(const SockException &ex , bool handshake_done) {
 }
 
 int RtspPlayer::getTrackIndexByInterleaved(int interleaved) const {
-    for (unsigned int i = 0; i < _sdp_track.size(); i++) {
+    for (size_t i = 0; i < _sdp_track.size(); ++i) {
         if (_sdp_track[i]->_interleaved == interleaved) {
             return i;
         }
@@ -705,7 +719,7 @@ int RtspPlayer::getTrackIndexByInterleaved(int interleaved) const {
 }
 
 int RtspPlayer::getTrackIndexByTrackType(TrackType track_type) const {
-    for (unsigned int i = 0; i < _sdp_track.size(); i++) {
+    for (size_t i = 0; i < _sdp_track.size(); ++i) {
         if (_sdp_track[i]->_type == track_type) {
             return i;
         }
@@ -713,7 +727,7 @@ int RtspPlayer::getTrackIndexByTrackType(TrackType track_type) const {
     if (_sdp_track.size() == 1) {
         return 0;
     }
-    throw SockException(Err_shutdown, StrPrinter << "no such track with type:" << (int) track_type);
+    throw SockException(Err_shutdown, StrPrinter << "no such track with type:" << getTrackString(track_type));
 }
 
 } /* namespace mediakit */

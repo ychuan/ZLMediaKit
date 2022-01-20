@@ -49,7 +49,14 @@ void HttpTSPlayer::onResponseBody(const char *buf, size_t size, size_t recved_si
     }
 
     if (_split_ts) {
-        _segment.input(buf, size);
+        try {
+            _segment.input(buf, size);
+        } catch (std::exception &ex) {
+            WarnL << ex.what();
+            //ts解析失败，清空缓存数据
+            _segment.reset();
+            throw;
+        }
     } else {
         onPacket(buf, size);
     }
@@ -66,6 +73,7 @@ void HttpTSPlayer::onDisconnect(const SockException &ex) {
 void HttpTSPlayer::emitOnComplete(const SockException &ex) {
     if (_on_complete) {
         _on_complete(ex);
+        _on_complete = nullptr;
     }
 }
 

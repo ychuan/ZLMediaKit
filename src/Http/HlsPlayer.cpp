@@ -32,12 +32,12 @@ void HlsPlayer::play_l() {
     if (waitResponse()) {
         return;
     }
-    float playTimeOutSec = (*this)[Client::kTimeoutMS].as<int>() / 1000.0f;
     setMethod("GET");
     if (!(*this)[kNetAdapter].empty()) {
         setNetAdapter((*this)[kNetAdapter]);
     }
-    sendRequest(_m3u8_list.back(), playTimeOutSec);
+    setCompleteTimeout((*this)[Client::kTimeoutMS].as<int>());
+    sendRequest(_m3u8_list.back());
 }
 
 void HlsPlayer::teardown_l(const SockException &ex) {
@@ -117,7 +117,9 @@ void HlsPlayer::playNextTs() {
     });
 
     _http_ts_player->setMethod("GET");
-    _http_ts_player->sendRequest(url, 2 * duration);
+    //ts切片必须在其时长的3倍内下载完毕
+    _http_ts_player->setCompleteTimeout(3 * duration * 1000);
+    _http_ts_player->sendRequest(url);
 }
 
 void HlsPlayer::onParsed(bool is_m3u8_inner, int64_t sequence, const map<int, ts_segment> &ts_map) {
@@ -169,6 +171,13 @@ ssize_t HlsPlayer::onResponseHeader(const string &status, const HttpClient::Http
     }
     auto content_type = const_cast< HttpClient::HttpHeader &>(headers)["Content-Type"];
     _is_m3u8 = (content_type.find("application/vnd.apple.mpegurl") == 0);
+    if(!_is_m3u8) {
+        auto it = headers.find("Content-Length");
+        //如果没有长度或者长度小于等于0, 那么肯定不是m3u8
+        if (it == headers.end() || atoll(it->second.data()) <=0) {
+            teardown_l(SockException(Err_shutdown, "可能不是m3u8文件"));
+        }
+    }
     return -1;
 }
 
