@@ -15,6 +15,7 @@
 #include "Util/onceToken.h"
 #include "Util/NoticeCenter.h"
 
+using namespace std;
 using namespace toolkit;
 
 namespace mediakit {
@@ -126,6 +127,8 @@ const string kNotFound = HTTP_FIELD"notFound";
 //是否显示文件夹菜单
 const string kDirMenu = HTTP_FIELD"dirMenu";
 
+const string kForbidCacheSuffix = HTTP_FIELD"forbidCacheSuffix";
+
 onceToken token([](){
     mINI::Instance()[kSendBufSize] = 64 * 1024;
     mINI::Instance()[kMaxReqSize] = 4 * 10240;
@@ -150,6 +153,7 @@ onceToken token([](){
                                                 "</body>"
                                                 "</html>"
                                              << endl;
+     mINI::Instance()[kForbidCacheSuffix] = "";
 },nullptr);
 
 }//namespace Http

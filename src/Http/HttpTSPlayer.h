@@ -15,17 +15,15 @@
 #include "Player/MediaPlayer.h"
 #include "Rtp/TSDecoder.h"
 
-using namespace toolkit;
-
 namespace mediakit {
 
 //http-ts播发器，未实现ts解复用
 class HttpTSPlayer : public HttpClientImp {
 public:
     using Ptr = std::shared_ptr<HttpTSPlayer>;
-    using onComplete = std::function<void(const SockException &)>;
+    using onComplete = std::function<void(const toolkit::SockException &)>;
 
-    HttpTSPlayer(const EventPoller::Ptr &poller = nullptr, bool split_ts = true);
+    HttpTSPlayer(const toolkit::EventPoller::Ptr &poller = nullptr);
     ~HttpTSPlayer() override = default;
 
     /**
@@ -40,29 +38,14 @@ public:
 
 protected:
     ///HttpClient override///
-    ssize_t onResponseHeader(const string &status, const HttpHeader &header) override;
-    void onResponseBody(const char *buf, size_t size, size_t recved_size, size_t total_size) override;
-    void onResponseCompleted() override;
-    void onDisconnect(const SockException &ex) override;
-
-protected:
-    /**
-     * 收到ts数据
-     */
-    virtual void onPacket(const char *data, size_t len);
+    void onResponseHeader(const std::string &status, const HttpHeader &header) override;
+    void onResponseBody(const char *buf, size_t size) override;
+    void onResponseCompleted(const toolkit::SockException &ex) override;
 
 private:
-    void emitOnComplete(const SockException &ex);
+    void emitOnComplete(const toolkit::SockException &ex);
 
 private:
-    //是否为mpegts负载
-    bool _is_ts_content = false;
-    //第一个包是否为ts包
-    bool _is_first_packet_ts = false;
-    //是否判断是否是ts并split
-    bool _split_ts;
-    string _status;
-    TSSegment _segment;
     onComplete _on_complete;
     TSSegment::onSegment _on_segment;
 };

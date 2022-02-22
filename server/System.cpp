@@ -18,13 +18,15 @@
 #endif//!defined(_WIN32)
 
 #include "System.h"
-#include <signal.h>
+#include <cstdlib>
+#include <csignal>
 #include <map>
 #include <iostream>
 #include "Util/logger.h"
 #include "Util/NoticeCenter.h"
 #include "Util/uv_errno.h"
 using namespace toolkit;
+using namespace std;
 
 const int MAX_STACK_FRAMES = 128;
 #define BroadcastOnCrashDumpArgs int &sig,const vector<vector<string> > &stack

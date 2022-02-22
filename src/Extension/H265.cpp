@@ -11,7 +11,10 @@
 #include "H265.h"
 #include "SPSParser.h"
 
-namespace mediakit{
+using namespace std;
+using namespace toolkit;
+
+namespace mediakit {
 
 bool getHEVCInfo(const char * vps, size_t vps_len,const char * sps,size_t sps_len,int &iVideoWidth, int &iVideoHeight, float  &iVideoFps){
     T_GetBitContext tGetBitBuf;
@@ -91,7 +94,7 @@ bool H265Track::ready() {
 
 bool H265Track::inputFrame(const Frame::Ptr &frame) {
     int type = H265_TYPE(frame->data()[frame->prefixSize()]);
-    if (!frame->configFrame() && type != H265Frame::NAL_SEI_PREFIX) {
+    if (!frame->configFrame() && type != H265Frame::NAL_SEI_PREFIX && ready()) {
         return inputFrame_l(frame);
     }
     bool ret = false;
