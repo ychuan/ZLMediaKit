@@ -24,6 +24,8 @@ WebRtcEchoTest::WebRtcEchoTest(const EventPoller::Ptr &poller) : WebRtcTransport
 void WebRtcEchoTest::onRtcConfigure(RtcConfigure &configure) const {
     WebRtcTransportImp::onRtcConfigure(configure);
     configure.audio.direction = configure.video.direction = RtpDirection::sendrecv;
+    configure.audio.extmap.emplace(RtpExtType::sdes_mid, RtpDirection::sendrecv);
+    configure.video.extmap.emplace(RtpExtType::sdes_mid, RtpDirection::sendrecv);
 }
 
 void WebRtcEchoTest::onRtp(const char *buf, size_t len, uint64_t stamp_ms) {
@@ -40,7 +42,9 @@ void WebRtcEchoTest::onCheckSdp(SdpType type, RtcSession &sdp) {
     if (type == SdpType::answer) {
         for (auto &m : sdp.media) {
             for (auto &ssrc : m.rtp_rtx_ssrc) {
-                ssrc.msid = "zlmediakit msid";
+                if (!ssrc.msid.empty()) {
+                    ssrc.msid = "zlmediakit msid";
+                }
             }
         }
     }

@@ -159,18 +159,15 @@ static bool makeFolderMenu(const string &httpPath, const string &strFullPath, st
             continue;
         }
         //是文件
-        struct stat fileData;
-        if (0 == stat(strAbsolutePath.data(), &fileData)) {
-            auto &fileSize = fileData.st_size;
-            if (fileSize < 1024) {
-                ss << " (" << fileData.st_size << "B)" << endl;
-            } else if (fileSize < 1024 * 1024) {
-                ss << fixed << setprecision(2) << " (" << fileData.st_size / 1024.0 << "KB)";
-            } else if (fileSize < 1024 * 1024 * 1024) {
-                ss << fixed << setprecision(2) << " (" << fileData.st_size / 1024 / 1024.0 << "MB)";
-            } else {
-                ss << fixed << setprecision(2) << " (" << fileData.st_size / 1024 / 1024 / 1024.0 << "GB)";
-            }
+        auto fileSize = File::fileSize(strAbsolutePath.data());
+        if (fileSize < 1024) {
+            ss << " (" << fileSize << "B)" << endl;
+        } else if (fileSize < 1024 * 1024) {
+            ss << fixed << setprecision(2) << " (" << fileSize / 1024.0 << "KB)";
+        } else if (fileSize < 1024 * 1024 * 1024) {
+            ss << fixed << setprecision(2) << " (" << fileSize / 1024 / 1024.0 << "MB)";
+        } else {
+            ss << fixed << setprecision(2) << " (" << fileSize / 1024 / 1024 / 1024.0 << "GB)";
         }
         ss << "</a></li>\r\n";
     }
@@ -356,35 +353,23 @@ static string pathCat(const string &a, const string &b){
  */
 static void accessFile(TcpSession &sender, const Parser &parser, const MediaInfo &media_info, const string &file_path, const HttpFileManager::invoker &cb) {
     bool is_hls = end_with(file_path, kHlsSuffix);
-    bool file_exist = File::is_file(file_path.data());
-    bool is_forbid_cache = false;
-    if (!is_hls && !file_exist) {
+    if (!is_hls && !File::fileExist(file_path.data())) {
         //文件不存在且不是hls,那么直接返回404
         sendNotFound(cb);
         return;
     }
-
     if (is_hls) {
-        //hls，那么移除掉后缀获取真实的stream_id并且修改协议为HLS
+        // hls，那么移除掉后缀获取真实的stream_id并且修改协议为HLS
         const_cast<string &>(media_info._schema) = HLS_SCHEMA;
         replace(const_cast<string &>(media_info._streamid), kHlsSuffix, "");
     }
 
-    GET_CONFIG_FUNC(vector<string>, forbidCacheSuffix, Http::kForbidCacheSuffix, [](const string &str) {
-        return split(str,",");
-    });
-    for (auto &suffix : forbidCacheSuffix) {
-        if(suffix != "" && end_with(file_path, suffix)){
-            is_forbid_cache = true;
-            break;
-        }
-    }
     weak_ptr<TcpSession> weakSession = sender.shared_from_this();
     //判断是否有权限访问该文件
-    canAccessPath(sender, parser, media_info, false, [cb, file_path, parser, is_hls,is_forbid_cache, media_info, weakSession , file_exist](const string &err_msg, const HttpServerCookie::Ptr &cookie) {
+    canAccessPath(sender, parser, media_info, false, [cb, file_path, parser, is_hls, media_info, weakSession](const string &err_msg, const HttpServerCookie::Ptr &cookie) {
         auto strongSession = weakSession.lock();
         if (!strongSession) {
-            //http客户端已经断开，不需要回复
+            // http客户端已经断开，不需要回复
             return;
         }
         if (!err_msg.empty()) {
@@ -397,14 +382,13 @@ static void accessFile(TcpSession &sender, const Parser &parser, const MediaInfo
             return;
         }
 
-        auto response_file = [file_exist, is_hls, is_forbid_cache](const HttpServerCookie::Ptr &cookie, const HttpFileManager::invoker &cb,
-                                                  const string &file_path, const Parser &parser, const string &file_content = "") {
+        auto response_file = [is_hls](const HttpServerCookie::Ptr &cookie, const HttpFileManager::invoker &cb, const string &file_path, const Parser &parser, const string &file_content = "") {
             StrCaseMap httpHeader;
             if (cookie) {
                 httpHeader["Set-Cookie"] = cookie->getCookie(cookie->getAttach<HttpCookieAttachment>()._path);
             }
             HttpSession::HttpResponseInvoker invoker = [&](int code, const StrCaseMap &headerOut, const HttpBody::Ptr &body) {
-                if (cookie && file_exist) {
+                if (cookie && body) {
                     auto& attach = cookie->getAttach<HttpCookieAttachment>();
                     if (attach._hls_data) {
                         attach._hls_data->addByteUsage(body->remainSize());
@@ -412,6 +396,16 @@ static void accessFile(TcpSession &sender, const Parser &parser, const MediaInfo
                 }
                 cb(code, HttpFileManager::getContentType(file_path.data()), headerOut, body);
             };
+            GET_CONFIG_FUNC(vector<string>, forbidCacheSuffix, Http::kForbidCacheSuffix, [](const string &str) {
+                return split(str, ",");
+            });
+            bool is_forbid_cache = false;
+            for (auto &suffix : forbidCacheSuffix) {
+                if (suffix != "" && end_with(file_path, suffix)) {
+                    is_forbid_cache = true;
+                    break;
+                }
+            }
             invoker.responseFile(parser.getHeader(), httpHeader, file_content.empty() ? file_path : file_content, !is_hls && !is_forbid_cache, file_content.empty());
         };
 
