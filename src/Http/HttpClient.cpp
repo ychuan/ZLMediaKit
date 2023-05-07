@@ -22,13 +22,13 @@ void HttpClient::sendRequest(const string &url) {
     clearResponse();
     _url = url;
     auto protocol = FindField(url.data(), NULL, "://");
-    uint16_t default_port;
+    uint16_t port;
     bool is_https;
     if (strcasecmp(protocol.data(), "http") == 0) {
-        default_port = 80;
+        port = 80;
         is_https = false;
     } else if (strcasecmp(protocol.data(), "https") == 0) {
-        default_port = 443;
+        port = 443;
         is_https = true;
     } else {
         auto strErr = StrPrinter << "非法的http url:" << url << endl;
@@ -53,14 +53,7 @@ void HttpClient::sendRequest(const string &url) {
         _header.emplace("Authorization", "Basic " + encodeBase64(authStr));
     }
     auto host_header = host;
-    uint16_t port = atoi(FindField(host.data(), ":", NULL).data());
-    if (port <= 0) {
-        //默认端口
-        port = default_port;
-    } else {
-        //服务器域名
-        host = FindField(host.data(), NULL, ":");
-    }
+    splitUrl(host, host, port);
     _header.emplace("Host", host_header);
     _header.emplace("User-Agent", kServerName);
     _header.emplace("Connection", "keep-alive");
@@ -183,14 +176,14 @@ void HttpClient::onRecv(const Buffer::Ptr &pBuf) {
     HttpRequestSplitter::input(pBuf->data(), pBuf->size());
 }
 
-void HttpClient::onErr(const SockException &ex) {
+void HttpClient::onError(const SockException &ex) {
     onResponseCompleted_l(ex);
 }
 
 ssize_t HttpClient::onRecvHeader(const char *data, size_t len) {
     _parser.Parse(data);
-    if (_parser.Url() == "302" || _parser.Url() == "301") {
-        auto new_url = _parser["Location"];
+    if (_parser.Url() == "302" || _parser.Url() == "301" || _parser.Url() == "303") {
+        auto new_url = Parser::merge_url(_url, _parser["Location"]);
         if (new_url.empty()) {
             throw invalid_argument("未找到Location字段(跳转url)");
         }
@@ -213,7 +206,11 @@ ssize_t HttpClient::onRecvHeader(const char *data, size_t len) {
                 onResponseBody(data, len);
             } else {
                 _total_body_size = _recved_body_size;
-                onResponseCompleted_l(SockException(Err_success, "success"));
+                if (_recved_body_size > 0) {
+                    onResponseCompleted_l(SockException(Err_success, "success"));
+                }else{
+                    onResponseCompleted_l(SockException(Err_other, "no body"));
+                }
             }
         });
         //后续为源源不断的body
@@ -229,7 +226,7 @@ ssize_t HttpClient::onRecvHeader(const char *data, size_t len) {
 
     if (_total_body_size == 0) {
         //后续没content，本次http请求结束
-        onResponseCompleted_l(SockException(Err_success, "success"));
+        onResponseCompleted_l(SockException(Err_success, "The request is successful but has no body"));
         return 0;
     }
 
@@ -263,7 +260,7 @@ void HttpClient::onRecvContent(const char *data, size_t len) {
     if (_recved_body_size == (size_t)_total_body_size) {
         //content接收完毕
         onResponseBody(data, len);
-        onResponseCompleted_l(SockException(Err_success, "success"));
+        onResponseCompleted_l(SockException(Err_success, "completed"));
         return;
     }
 
@@ -332,7 +329,7 @@ void HttpClient::onResponseCompleted_l(const SockException &ex) {
 
     if (_total_body_size > 0 && _recved_body_size >= (size_t)_total_body_size) {
         //回复header中有content-length信息，那么收到的body大于等于声明值则认为成功
-        onResponseCompleted(SockException(Err_success, "success"));
+        onResponseCompleted(SockException(Err_success, "read body completed"));
         return;
     }
 

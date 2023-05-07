@@ -13,6 +13,8 @@
 #include "Util/util.h"
 #include "Util/onceToken.h"
 #include "Thread/ThreadPool.h"
+#include "Common/Parser.h"
+#include "Common/config.h"
 
 using namespace std;
 using namespace toolkit;
@@ -74,16 +76,10 @@ void RtmpPusher::publish(const string &url)  {
     }
     DebugL << host_url << " " << _app << " " << _stream_id;
 
-    auto iPort = atoi(FindField(host_url.data(), ":", NULL).data());
-    if (iPort <= 0) {
-        //rtmp 默认端口1935
-        iPort = 1935;
-    } else {
-        //服务器域名
-        host_url = FindField(host_url.data(), NULL, ":");
-    }
+    uint16_t port = 1935;
+    splitUrl(host_url, host_url, port);
 
-    weak_ptr<RtmpPusher> weakSelf = dynamic_pointer_cast<RtmpPusher>(shared_from_this());
+    weak_ptr<RtmpPusher> weakSelf = static_pointer_cast<RtmpPusher>(shared_from_this());
     float publishTimeOutSec = (*this)[Client::kTimeoutMS].as<int>() / 1000.0f;
     _publish_timer.reset(new Timer(publishTimeOutSec, [weakSelf]() {
         auto strongSelf = weakSelf.lock();
@@ -98,10 +94,10 @@ void RtmpPusher::publish(const string &url)  {
         setNetAdapter((*this)[Client::kNetAdapter]);
     }
 
-    startConnect(host_url, iPort);
+    startConnect(host_url, port);
 }
 
-void RtmpPusher::onErr(const SockException &ex){
+void RtmpPusher::onError(const SockException &ex){
     //定时器_pPublishTimer为空后表明握手结束了
     onPublishResult_l(ex, !_publish_timer);
 }
@@ -111,7 +107,7 @@ void RtmpPusher::onConnect(const SockException &err){
         onPublishResult_l(err, false);
         return;
     }
-    weak_ptr<RtmpPusher> weak_self = dynamic_pointer_cast<RtmpPusher>(shared_from_this());
+    weak_ptr<RtmpPusher> weak_self = static_pointer_cast<RtmpPusher>(shared_from_this());
     startClientSession([weak_self]() {
         auto strong_self = weak_self.lock();
         if (!strong_self) {
@@ -133,7 +129,7 @@ void RtmpPusher::onRecv(const Buffer::Ptr &buf){
     }
 }
 
-inline void RtmpPusher::send_connect() {
+void RtmpPusher::send_connect() {
     AMFValue obj(AMF_OBJECT);
     obj.set("app", _app);
     obj.set("type", "nonprivate");
@@ -153,7 +149,7 @@ inline void RtmpPusher::send_connect() {
     });
 }
 
-inline void RtmpPusher::send_createStream() {
+void RtmpPusher::send_createStream() {
     AMFValue obj(AMF_NULL);
     sendInvoke("createStream", obj);
     addOnResultCB([this](AMFDecoder &dec) {
@@ -165,7 +161,7 @@ inline void RtmpPusher::send_createStream() {
 }
 
 #define RTMP_STREAM_LIVE    "live"
-inline void RtmpPusher::send_publish() {
+void RtmpPusher::send_publish() {
     AMFEncoder enc;
     enc << "publish" << ++_send_req_id << nullptr << _stream_id << RTMP_STREAM_LIVE;
     sendRequest(MSG_CMD, enc.data());
@@ -181,7 +177,7 @@ inline void RtmpPusher::send_publish() {
     });
 }
 
-inline void RtmpPusher::send_metaData(){
+void RtmpPusher::send_metaData(){
     auto src = _publish_src.lock();
     if (!src) {
         throw std::runtime_error("the media source was released");
@@ -197,7 +193,7 @@ inline void RtmpPusher::send_metaData(){
 
     src->pause(false);
     _rtmp_reader = src->getRing()->attach(getPoller());
-    weak_ptr<RtmpPusher> weak_self = dynamic_pointer_cast<RtmpPusher>(shared_from_this());
+    weak_ptr<RtmpPusher> weak_self = static_pointer_cast<RtmpPusher>(shared_from_this());
     _rtmp_reader->setReadCB([weak_self](const RtmpMediaSource::RingDataType &pkt) {
         auto strong_self = weak_self.lock();
         if (!strong_self) {

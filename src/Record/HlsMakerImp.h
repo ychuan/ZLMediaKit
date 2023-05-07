@@ -25,7 +25,8 @@ public:
                 const std::string &params,
                 uint32_t bufSize  = 64 * 1024,
                 float seg_duration = 5,
-                uint32_t seg_number = 3);
+                uint32_t seg_number = 3,
+                bool seg_keep = false);
 
     ~HlsMakerImp() override;
 
@@ -53,7 +54,7 @@ protected:
     void onDelSegment(uint64_t index) override;
     void onWriteSegment(const char *data, size_t len) override;
     void onWriteHls(const std::string &data) override;
-    void onFlushLastSegment(uint32_t duration_ms) override;
+    void onFlushLastSegment(uint64_t duration_ms) override;
 
 private:
     std::shared_ptr<FILE> makeFile(const std::string &file,bool setbuf = false);

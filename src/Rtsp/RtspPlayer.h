@@ -13,18 +13,13 @@
 
 #include <string>
 #include <memory>
-#include "RtspSession.h"
-#include "RtspMediaSource.h"
-#include "Player/PlayerBase.h"
-#include "Util/util.h"
-#include "Util/logger.h"
 #include "Util/TimeTicker.h"
 #include "Poller/Timer.h"
 #include "Network/Socket.h"
+#include "Player/PlayerBase.h"
 #include "Network/TcpClient.h"
 #include "RtspSplitter.h"
 #include "RtpReceiver.h"
-#include "Common/Stamp.h"
 #include "Rtcp/RtcpContext.h"
 
 namespace mediakit {
@@ -89,7 +84,7 @@ protected:
     /////////////TcpClient override/////////////
     void onConnect(const toolkit::SockException &err) override;
     void onRecv(const toolkit::Buffer::Ptr &buf) override;
-    void onErr(const toolkit::SockException &ex) override;
+    void onError(const toolkit::SockException &ex) override;
 
 private:
     void onPlayResult_l(const toolkit::SockException &ex , bool handshake_done);

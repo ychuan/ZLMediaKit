@@ -26,20 +26,26 @@ using namespace std;
 using namespace toolkit;
 using namespace mediakit;
 
+static semaphore sem;
+
 #if defined(ENABLE_RTPPROXY)
-static bool loadFile(const char *path){
+static bool loadFile(const char *path, const EventPoller::Ptr &poller){
     FILE *fp = fopen(path, "rb");
     if (!fp) {
         WarnL << "open file failed:" << path;
         return false;
     }
 
-    uint32_t timeStamp_last = 0;
+    uint64_t timeStamp_last = 0;
     uint16_t len;
     char rtp[0xFFFF];
-    struct sockaddr addr = {0};
-    auto sock = Socket::createSocket();
+    struct sockaddr_storage addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.ss_family = AF_INET;
+    auto sock = Socket::createSocket(poller);
     size_t total_size = 0;
+    RtpProcess::Ptr process;
+    uint32_t ssrc = 0;
     while (true) {
         if (2 != fread(&len, 1, 2, fp)) {
             WarnL;
@@ -56,9 +62,24 @@ static bool loadFile(const char *path){
             break;
         }
         total_size += len;
-        uint32_t timeStamp;
+        uint64_t timeStamp = 0;
 
-        RtpSelector::Instance().inputRtp(sock, rtp, len, &addr, &timeStamp);
+        if (!process) {
+            if (!RtpSelector::getSSRC(rtp, len, ssrc)) {
+                WarnL << "get ssrc from rtp failed:" << len;
+                return false;
+            }
+            process = RtpSelector::Instance().getProcess(printSSRC(ssrc), true);
+        }
+        if (process) {
+            try {
+                process->inputRtp(true, sock, rtp, len, (struct sockaddr *)&addr, &timeStamp);
+            } catch (...) {
+                RtpSelector::Instance().delProcess(printSSRC(ssrc), process.get());
+                throw;
+            }
+        }
+
         auto diff = timeStamp - timeStamp_last;
         if (diff > 0 && diff < 500) {
             usleep(diff * 1000);
@@ -89,8 +110,15 @@ int main(int argc,char *argv[]) {
     //此处选择是否导出调试文件
 //    mINI::Instance()[RtpProxy::kDumpDir] = "/Users/xzl/Desktop/";
 
-    if (argc == 2)
-      loadFile(argv[1]);
+    if (argc == 2){
+        auto poller = EventPollerPool::Instance().getPoller();
+        poller->async_first([poller,argv](){
+            loadFile(argv[1],poller);
+            sem.post();
+        });
+        sem.wait();
+        sleep(1);
+    }
     else
       ErrorL << "parameter error.";
 #else

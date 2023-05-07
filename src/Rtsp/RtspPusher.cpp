@@ -12,6 +12,8 @@
 #include "Util/base64.h"
 #include "RtspPusher.h"
 #include "RtspSession.h"
+#include "Rtcp/RtcpContext.h"
+#include "Common/config.h"
 
 using namespace std;
 using namespace toolkit;
@@ -56,8 +58,10 @@ void RtspPusher::teardown() {
 
 void RtspPusher::publish(const string &url_str) {
     RtspUrl url;
-    if (!url.parse(url_str)) {
-        onPublishResult_l(SockException(Err_other, StrPrinter << "illegal rtsp url:" << url_str), false);
+    try {
+        url.parse(url_str);
+    } catch (std::exception &ex) {
+        onPublishResult_l(SockException(Err_other, StrPrinter << "illegal rtsp url:" << ex.what()), false);
         return;
     }
 
@@ -76,7 +80,7 @@ void RtspPusher::publish(const string &url_str) {
     DebugL << url._url << " " << (url._user.size() ? url._user : "null") << " "
            << (url._passwd.size() ? url._passwd : "null") << " " << _rtp_type;
 
-    weak_ptr<RtspPusher> weak_self = dynamic_pointer_cast<RtspPusher>(shared_from_this());
+    weak_ptr<RtspPusher> weak_self = static_pointer_cast<RtspPusher>(shared_from_this());
     float publish_timeout_sec = (*this)[Client::kTimeoutMS].as<int>() / 1000.0f;
     _publish_timer.reset(new Timer(publish_timeout_sec, [weak_self]() {
         auto strong_self = weak_self.lock();
@@ -114,7 +118,7 @@ void RtspPusher::onPublishResult_l(const SockException &ex, bool handshake_done)
     }
 }
 
-void RtspPusher::onErr(const SockException &ex) {
+void RtspPusher::onError(const SockException &ex) {
     //定时器_pPublishTimer为空后表明握手结束了
     onPublishResult_l(ex, !_publish_timer);
 }
@@ -307,30 +311,25 @@ void RtspPusher::handleResSetup(const Parser &parser, unsigned int track_idx) {
         auto &rtp_sock = _rtp_sock[track_idx];
         auto &rtcp_sock = _rtcp_sock[track_idx];
 
-        struct sockaddr_in rtpto;
+        auto rtpto = SockUtil::make_sockaddr(get_peer_ip().data(), rtp_port);
         //设置rtp发送目标，为后续发送rtp做准备
-        rtpto.sin_port = ntohs(rtp_port);
-        rtpto.sin_family = AF_INET;
-        rtpto.sin_addr.s_addr = inet_addr(get_peer_ip().data());
         rtp_sock->bindPeerAddr((struct sockaddr *) &(rtpto));
 
         //设置rtcp发送目标，为后续发送rtcp做准备
-        rtpto.sin_port = ntohs(rtcp_port);
-        rtpto.sin_family = AF_INET;
-        rtpto.sin_addr.s_addr = inet_addr(get_peer_ip().data());
-        rtcp_sock->bindPeerAddr((struct sockaddr *)&(rtpto));
+        auto rtcpto = SockUtil::make_sockaddr(get_peer_ip().data(), rtcp_port);
+        rtcp_sock->bindPeerAddr((struct sockaddr *)&(rtcpto));
 
-        auto srcIP = inet_addr(get_peer_ip().data());
-        weak_ptr<RtspPusher> weakSelf = dynamic_pointer_cast<RtspPusher>(shared_from_this());
+        auto peer_ip = get_peer_ip();
+        weak_ptr<RtspPusher> weakSelf = static_pointer_cast<RtspPusher>(shared_from_this());
         if(rtcp_sock) {
             //设置rtcp over udp接收回调处理函数
-            rtcp_sock->setOnRead([srcIP, track_idx, weakSelf](const Buffer::Ptr &buf, struct sockaddr *addr , int addr_len) {
+            rtcp_sock->setOnRead([peer_ip, track_idx, weakSelf](const Buffer::Ptr &buf, struct sockaddr *addr , int addr_len) {
                 auto strongSelf = weakSelf.lock();
                 if (!strongSelf) {
                     return;
                 }
-                if (((struct sockaddr_in *) addr)->sin_addr.s_addr != srcIP) {
-                    WarnL << "收到其他地址的rtcp数据:" << SockUtil::inet_ntoa(((struct sockaddr_in *) addr)->sin_addr);
+                if (SockUtil::inet_ntoa(addr) != peer_ip) {
+                    WarnL << "收到其他地址的rtcp数据:" << SockUtil::inet_ntoa(addr);
                     return;
                 }
                 strongSelf->onRtcpPacket(track_idx, strongSelf->_track_vec[track_idx], (uint8_t *) buf->data(), buf->size());
@@ -452,7 +451,7 @@ void RtspPusher::sendRecord() {
 
         src->pause(false);
         _rtsp_reader = src->getRing()->attach(getPoller());
-        weak_ptr<RtspPusher> weak_self = dynamic_pointer_cast<RtspPusher>(shared_from_this());
+        weak_ptr<RtspPusher> weak_self = static_pointer_cast<RtspPusher>(shared_from_this());
         _rtsp_reader->setReadCB([weak_self](const RtspMediaSource::RingDataType &pkt) {
             auto strong_self = weak_self.lock();
             if (!strong_self) {
@@ -540,10 +539,8 @@ void RtspPusher::sendRtspRequest(const string &cmd, const string &url,const StrC
             printer << "response=\"" << response << "\"";
             header.emplace("Authorization", printer);
         } else if (!(*this)[Client::kRtspPwdIsMD5].as<bool>()) {
-            //base64认证
-            string authStr = StrPrinter << (*this)[Client::kRtspUser] << ":" << (*this)[Client::kRtspPwd];
-            char authStrBase64[1024] = {0};
-            av_base64_encode(authStrBase64, sizeof(authStrBase64), (uint8_t *) authStr.data(), (int)authStr.size());
+            // base64认证
+            auto authStrBase64 = encodeBase64((*this)[Client::kRtspUser] + ":" + (*this)[Client::kRtspPwd]);
             header.emplace("Authorization", StrPrinter << "Basic " << authStrBase64);
         }
     }

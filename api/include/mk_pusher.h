@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-typedef void* mk_pusher;
+typedef struct mk_pusher_t *mk_pusher;
 
 /**
  * 推流结果或推流中断事件的回调
@@ -60,7 +60,7 @@ API_EXPORT void API_CALL mk_pusher_release(mk_pusher ctx);
 /**
  * 设置推流器配置选项
  * @param ctx 推流器指针
- * @param key 配置项键,支持 net_adapter/rtp_type/rtsp_user/rtsp_pwd/protocol_timeout_ms/media_timeout_ms/beat_interval_ms/max_analysis_ms
+ * @param key 配置项键,支持 net_adapter/rtp_type/rtsp_user/rtsp_pwd/protocol_timeout_ms/media_timeout_ms/beat_interval_ms
  * @param val 配置项值,如果是整形，需要转换成统一转换成string
  */
 API_EXPORT void API_CALL mk_pusher_set_option(mk_pusher ctx, const char *key, const char *val);
@@ -79,6 +79,7 @@ API_EXPORT void API_CALL mk_pusher_publish(mk_pusher ctx,const char *url);
  * @param user_data 用户数据指针
  */
 API_EXPORT void API_CALL mk_pusher_set_on_result(mk_pusher ctx, on_mk_push_event cb, void *user_data);
+API_EXPORT void API_CALL mk_pusher_set_on_result2(mk_pusher ctx, on_mk_push_event cb, void *user_data, on_user_data_free user_data_free);
 
 /**
  * 设置推流被异常中断的回调
@@ -87,6 +88,7 @@ API_EXPORT void API_CALL mk_pusher_set_on_result(mk_pusher ctx, on_mk_push_event
  * @param user_data 用户数据指针
  */
 API_EXPORT void API_CALL mk_pusher_set_on_shutdown(mk_pusher ctx, on_mk_push_event cb, void *user_data);
+API_EXPORT void API_CALL mk_pusher_set_on_shutdown2(mk_pusher ctx, on_mk_push_event cb, void *user_data, on_user_data_free user_data_free);
 
 #ifdef __cplusplus
 }

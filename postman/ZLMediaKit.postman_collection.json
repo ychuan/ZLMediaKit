@@ -1,6 +1,6 @@
 {
 	"info": {
-		"_postman_id": "fe6cdfbd-531d-45e6-87e5-d460ce9e6328",
+		"_postman_id": "39e8a1df-cc8e-4e3f-bf5e-197c86e7bf0f",
 		"name": "ZLMediaKit",
 		"description": "媒体服务器",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -348,7 +348,7 @@
 			"response": []
 		},
 		{
-			"name": "获取TcpSession列表(getAllSession)",
+			"name": "获取Session列表(getAllSession)",
 			"request": {
 				"method": "GET",
 				"header": [],
@@ -578,6 +578,12 @@
 							"value": null,
 							"description": "hls保存根目录，置空使用默认目录",
 							"disabled": true
+						},
+						{
+							"key": "modify_stamp",
+							"value": null,
+							"description": "是否重新计算时间戳",
+							"disabled": true
 						}
 					]
 				}
@@ -621,7 +627,7 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{ZLMediaKit_URL}}/index/api/addStreamPusherProxy?secret={{ZLMediaKit_secret}}&schema=rtmp&vhost={{defaultVhost}}&app=live&stream=test&dst_url=rtmp://127.0.0.1/live/push",
+					"raw": "{{ZLMediaKit_URL}}/index/api/addStreamPusherProxy?secret={{ZLMediaKit_secret}}&schema=rtmp&vhost={{defaultVhost}}&app=live&stream=test&dst_url=rtmp://192.168.1.104/live/push",
 					"host": [
 						"{{ZLMediaKit_URL}}"
 					],
@@ -658,7 +664,7 @@
 						},
 						{
 							"key": "dst_url",
-							"value": "rtmp://127.0.0.1/live/push",
+							"value": "rtmp://192.168.1.104/live/push",
 							"description": "推流地址，需要与schema字段协议一致"
 						},
 						{
@@ -690,7 +696,7 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{ZLMediaKit_URL}}/index/api/delStreamPusherProxy?secret={{ZLMediaKit_secret}}&key=__defaultVhost__/live/test",
+					"raw": "{{ZLMediaKit_URL}}/index/api/delStreamPusherProxy?secret={{ZLMediaKit_secret}}&key=rtmp/__defaultVhost__/live/test/f40a8ab006cac16ecc0858409e890491",
 					"host": [
 						"{{ZLMediaKit_URL}}"
 					],
@@ -707,7 +713,7 @@
 						},
 						{
 							"key": "key",
-							"value": "__defaultVhost__/live/test",
+							"value": "rtmp/__defaultVhost__/live/test/f40a8ab006cac16ecc0858409e890491",
 							"description": "addStreamPusherProxy接口返回的key"
 						}
 					]
@@ -849,6 +855,52 @@
 			"response": []
 		},
 		{
+			"name": "获取媒体流播放器列表(getMediaPlayerList)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{ZLMediaKit_URL}}/index/api/getMediaPlayerList?secret={{ZLMediaKit_secret}}&schema=rtsp&vhost={{defaultVhost}}&app=proxy&stream=1",
+					"host": [
+						"{{ZLMediaKit_URL}}"
+					],
+					"path": [
+						"index",
+						"api",
+						"getMediaPlayerList"
+					],
+					"query": [
+						{
+							"key": "secret",
+							"value": "{{ZLMediaKit_secret}}",
+							"description": "api操作密钥(配置文件配置)，如果操作ip是127.0.0.1，则不需要此参数"
+						},
+						{
+							"key": "schema",
+							"value": "rtsp",
+							"description": "协议，例如 rtsp或rtmp"
+						},
+						{
+							"key": "vhost",
+							"value": "{{defaultVhost}}",
+							"description": "虚拟主机，例如__defaultVhost__"
+						},
+						{
+							"key": "app",
+							"value": "proxy",
+							"description": "应用名，例如 live"
+						},
+						{
+							"key": "stream",
+							"value": "1",
+							"description": "流id，例如 test"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
 			"name": "获取流信息(getMediaInfo)",
 			"request": {
 				"method": "GET",
@@ -900,7 +952,7 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{ZLMediaKit_URL}}/index/api/getMp4RecordFile?secret={{ZLMediaKit_secret}}&vhost={{defaultVhost}}&app=proxy&stream=2&period=2020-05-26",
+					"raw": "{{ZLMediaKit_URL}}/index/api/getMp4RecordFile?secret={{ZLMediaKit_secret}}&vhost={{defaultVhost}}&app=proxy&stream=2&customized_path=/www&period=2020-05-26",
 					"host": [
 						"{{ZLMediaKit_URL}}"
 					],
@@ -931,9 +983,60 @@
 							"description": "流id，例如 test"
 						},
 						{
+							"key": "customized_path",
+							"value": "/www",
+							"description": "录像文件保存自定义根目录，为空则采用配置文件设置"
+						},
+						{
 							"key": "period",
 							"value": "2020-05-26",
 							"description": "流的录像日期，格式为2020-02-01,如果不是完整的日期，那么是搜索录像文件夹列表，否则搜索对应日期下的mp4文件列表"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "删除录像文件夹(deleteRecordDirectory)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{ZLMediaKit_URL}}/index/api/deleteRecordDirectory?secret={{ZLMediaKit_secret}}&vhost={{defaultVhost}}&app=proxy&stream=2&period=2020-01-01",
+					"host": [
+						"{{ZLMediaKit_URL}}"
+					],
+					"path": [
+						"index",
+						"api",
+						"deleteRecordDirectory"
+					],
+					"query": [
+						{
+							"key": "secret",
+							"value": "{{ZLMediaKit_secret}}",
+							"description": "api操作密钥(配置文件配置)，如果操作ip是127.0.0.1，则不需要此参数"
+						},
+						{
+							"key": "vhost",
+							"value": "{{defaultVhost}}",
+							"description": "虚拟主机，例如__defaultVhost__"
+						},
+						{
+							"key": "app",
+							"value": "proxy",
+							"description": "应用名，例如 live"
+						},
+						{
+							"key": "stream",
+							"value": "2",
+							"description": "流id，例如 test"
+						},
+						{
+							"key": "period",
+							"value": "2020-01-01",
+							"description": "流的录像日期，格式为2020-01-01,如果不是完整的日期，那么会删除失败"
 						}
 					]
 				}
@@ -1036,7 +1139,7 @@
 						},
 						{
 							"key": "speed",
-							"value": 2.0,
+							"value": "2.0",
 							"description": "要设置的录像倍速"
 						}
 					]
@@ -1050,7 +1153,7 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{ZLMediaKit_URL}}/index/api/startRecord?secret={{ZLMediaKit_secret}}&vhost={{defaultVhost}}&app=live&stream=obs&stamp=1000",
+					"raw": "{{ZLMediaKit_URL}}/index/api/seekRecordStamp?secret={{ZLMediaKit_secret}}&vhost={{defaultVhost}}&app=live&stream=obs&stamp",
 					"host": [
 						"{{ZLMediaKit_URL}}"
 					],
@@ -1260,7 +1363,7 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{ZLMediaKit_URL}}/index/api/openRtpServer?secret={{ZLMediaKit_secret}}&port=0&enable_tcp=1&stream_id=test",
+					"raw": "{{ZLMediaKit_URL}}/index/api/openRtpServer?secret={{ZLMediaKit_secret}}&port=0&tcp_mode=1&stream_id=test",
 					"host": [
 						"{{ZLMediaKit_URL}}"
 					],
@@ -1281,9 +1384,9 @@
 							"description": "绑定的端口，0时为随机端口"
 						},
 						{
-							"key": "enable_tcp",
+							"key": "tcp_mode",
 							"value": "1",
-							"description": "创建 udp端口时是否同时监听tcp端口"
+							"description": "tcp模式，0时为不启用tcp监听，1时为启用tcp监听，2时为tcp主动连接模式"
 						},
 						{
 							"key": "stream_id",
@@ -1301,6 +1404,53 @@
 							"value": "0",
 							"description": "是否指定收流的rtp ssrc, 十进制数字，不指定或指定0时则不过滤rtp，非必选参数",
 							"disabled": true
+						},
+						{
+							"key": "only_audio",
+							"value": "1",
+							"description": "是否为单音频track，用于语音对讲",
+							"disabled": true
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "连接RTP服务器(connectRtpServer)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{ZLMediaKit_URL}}/index/api/connectRtpServer?secret={{ZLMediaKit_secret}}&dst_url=0&dst_port=1&stream_id=test",
+					"host": [
+						"{{ZLMediaKit_URL}}"
+					],
+					"path": [
+						"index",
+						"api",
+						"connectRtpServer"
+					],
+					"query": [
+						{
+							"key": "secret",
+							"value": "{{ZLMediaKit_secret}}",
+							"description": "api操作密钥(配置文件配置)，如果操作ip是127.0.0.1，则不需要此参数"
+						},
+						{
+							"key": "dst_url",
+							"value": "0",
+							"description": "tcp主动模式时服务端地址"
+						},
+						{
+							"key": "dst_port",
+							"value": "1",
+							"description": "tcp主动模式时服务端端口"
+						},
+						{
+							"key": "stream_id",
+							"value": "test",
+							"description": "OpenRtpServer时绑定的流id\n"
 						}
 					]
 				}
@@ -1332,6 +1482,42 @@
 							"key": "stream_id",
 							"value": "test",
 							"description": "该端口绑定的流id"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "更新RTP服务器过滤SSRC(updateRtpServerSSRC)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{ZLMediaKit_URL}}/index/api/updateRtpServerSSRC?secret={{ZLMediaKit_secret}}&stream_id=test&ssrc=123456",
+					"host": [
+						"{{ZLMediaKit_URL}}"
+					],
+					"path": [
+						"index",
+						"api",
+						"updateRtpServerSSRC"
+					],
+					"query": [
+						{
+							"key": "secret",
+							"value": "{{ZLMediaKit_secret}}",
+							"description": "api操作密钥(配置文件配置)，如果操作ip是127.0.0.1，则不需要此参数"
+						},
+						{
+							"key": "stream_id",
+							"value": "test",
+							"description": "该端口绑定的流id"
+						},
+						{
+							"key": "ssrc",
+							"value": "123456",
+							"description": "十进制ssrc"
 						}
 					]
 				}
@@ -1511,6 +1697,106 @@
 							"value": "1",
 							"description": "rtp es方式打包时，是否只打包音频，该参数非必选参数",
 							"disabled": true
+						},
+						{
+							"key": "udp_rtcp_timeout",
+							"value": "0",
+							"description": "udp方式推流时，是否开启rtcp发送和rtcp接收超时判断，开启后(默认关闭)，如果接收rr rtcp超时，将导致主动停止rtp发送",
+							"disabled": true
+						},
+						{
+							"key": "recv_stream_id",
+							"value": "",
+							"description": "发送rtp同时接收，一般用于双向语言对讲, 如果不为空，说明开启接收，值为接收流的id",
+							"disabled": true
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "开始tcp passive被动发送rtp(startSendRtpPassive)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{ZLMediaKit_URL}}/index/api/startSendRtpPassive?secret={{ZLMediaKit_secret}}&vhost={{defaultVhost}}&app=live&stream=test&ssrc=1",
+					"host": [
+						"{{ZLMediaKit_URL}}"
+					],
+					"path": [
+						"index",
+						"api",
+						"startSendRtpPassive"
+					],
+					"query": [
+						{
+							"key": "secret",
+							"value": "{{ZLMediaKit_secret}}",
+							"description": "api操作密钥(配置文件配置)，如果操作ip是127.0.0.1，则不需要此参数"
+						},
+						{
+							"key": "vhost",
+							"value": "{{defaultVhost}}",
+							"description": "虚拟主机，例如__defaultVhost__"
+						},
+						{
+							"key": "app",
+							"value": "live",
+							"description": "应用名，例如 live"
+						},
+						{
+							"key": "stream",
+							"value": "test",
+							"description": "流id，例如 obs"
+						},
+						{
+							"key": "ssrc",
+							"value": "1",
+							"description": "rtp推流的ssrc，ssrc不同时，可以推流到多个上级服务器"
+						},
+						{
+							"key": "src_port",
+							"value": "0",
+							"description": "指定tcp/udp客户端使用的本地端口，0时为随机端口，该参数非必选参数，不传时为随机端口。",
+							"disabled": true
+						},
+						{
+							"key": "from_mp4",
+							"value": "0",
+							"description": "是否推送本地MP4录像，该参数非必选参数",
+							"disabled": true
+						},
+						{
+							"key": "use_ps",
+							"value": "1",
+							"description": "rtp打包采用ps还是es模式，默认采用ps模式，该参数非必选参数",
+							"disabled": true
+						},
+						{
+							"key": "pt",
+							"value": "96",
+							"description": "rtp payload type，默认96，该参数非必选参数",
+							"disabled": true
+						},
+						{
+							"key": "only_audio",
+							"value": "1",
+							"description": "rtp es方式打包时，是否只打包音频，该参数非必选参数",
+							"disabled": true
+						},
+						{
+							"key": "recv_stream_id",
+							"value": "",
+							"description": "发送rtp同时接收，一般用于双向语言对讲, 如果不为空，说明开启接收，值为接收流的id",
+							"disabled": true
+						},
+						{
+							"key": "close_delay_ms",
+							"value": "5000",
+							"description": "等待tcp连接超时时间，单位毫秒，默认5000毫秒",
+							"disabled": true
 						}
 					]
 				}
@@ -1558,6 +1844,89 @@
 							"value": "",
 							"description": "根据ssrc关停某路rtp推流，不传时关闭所有推流",
 							"disabled": true
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "获取版本信息(version)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{ZLMediaKit_URL}}/index/api/version?secret={{ZLMediaKit_secret}}",
+					"host": [
+						"{{ZLMediaKit_URL}}"
+					],
+					"path": [
+						"index",
+						"api",
+						"version"
+					],
+					"query": [
+						{
+							"key": "secret",
+							"value": "{{ZLMediaKit_secret}}"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "获取拉流代理信息(getProxyInfo)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{ZLMediaKit_URL}}/index/api/getProxyInfo?secret={{ZLMediaKit_secret}}&key=__defaultVhost__/live/test",
+					"host": [
+						"{{ZLMediaKit_URL}}"
+					],
+					"path": [
+						"index",
+						"api",
+						"getProxyInfo"
+					],
+					"query": [
+						{
+							"key": "secret",
+							"value": "{{ZLMediaKit_secret}}"
+						},
+						{
+							"key": "key",
+							"value": "__defaultVhost__/live/test"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "获取推流代理信息(getProxyPusherInfo)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{ZLMediaKit_URL}}/index/api/getProxyPusherInfo?secret={{ZLMediaKit_secret}}&key=rtmp/__defaultVhost__/live/test/f40a8ab006cac16ecc0858409e890491",
+					"host": [
+						"{{ZLMediaKit_URL}}"
+					],
+					"path": [
+						"index",
+						"api",
+						"getProxyPusherInfo"
+					],
+					"query": [
+						{
+							"key": "secret",
+							"value": "{{ZLMediaKit_secret}}"
+						},
+						{
+							"key": "key",
+							"value": "rtmp/__defaultVhost__/live/test/f40a8ab006cac16ecc0858409e890491"
 						}
 					]
 				}

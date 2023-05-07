@@ -53,8 +53,8 @@ bool AACRtpEncoder::inputFrame(const Frame::Ptr &frame) {
     return len > 0;
 }
 
-void AACRtpEncoder::makeAACRtp(const void *data, size_t len, bool mark, uint32_t uiStamp) {
-    RtpCodec::inputRtp(makeRtp(getTrackType(), data, len, mark, uiStamp), false);
+void AACRtpEncoder::makeAACRtp(const void *data, size_t len, bool mark, uint64_t stamp) {
+    RtpCodec::inputRtp(makeRtp(getTrackType(), data, len, mark, stamp), false);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////
@@ -80,13 +80,24 @@ void AACRtpDecoder::obtainFrame() {
 }
 
 bool AACRtpDecoder::inputRtp(const RtpPacket::Ptr &rtp, bool key_pos) {
+    auto payload_size = rtp->getPayloadSize();
+    if (payload_size <= 0) {
+        //无实际负载
+        return false;
+    }
+
     auto stamp = rtp->getStampMS();
     //rtp数据开始部分
     auto ptr = rtp->getPayload();
     //rtp数据末尾
-    auto end = ptr + rtp->getPayloadSize();
+    auto end = ptr + payload_size;
     //首2字节表示Au-Header的个数，单位bit，所以除以16得到Au-Header个数
     auto au_header_count = ((ptr[0] << 8) | ptr[1]) >> 4;
+    if (!au_header_count) {
+        //问题issue: https://github.com/ZLMediaKit/ZLMediaKit/issues/1869
+        WarnL << "invalid aac rtp au_header_count";
+        return false;
+    }
     //记录au_header起始指针
     auto au_header_ptr = ptr + 2;
     ptr = au_header_ptr +  au_header_count * 2;

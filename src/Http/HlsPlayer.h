@@ -11,7 +11,6 @@
 #ifndef HTTP_HLSPLAYER_H
 #define HTTP_HLSPLAYER_H
 
-#include "Common/Stamp.h"
 #include "Player/PlayerBase.h"
 #include "HttpTSPlayer.h"
 #include "HlsParser.h"
@@ -34,6 +33,7 @@ public:
     void addTrackCompleted() override { _delegate.addTrackCompleted(); }
     void resetTracks() override { ((MediaSink &)_delegate).resetTracks(); }
     std::vector<Track::Ptr> getTracks(bool ready = true) const override { return _delegate.getTracks(ready); }
+    void pushTask(std::function<void()> task);
 
 private:
     void onTick();
@@ -46,7 +46,7 @@ private:
     toolkit::Ticker _ticker;
     toolkit::Timer::Ptr _timer;
     MediaSinkDelegate _delegate;
-    std::multimap<int64_t, Frame::Ptr> _frame_cache;
+    std::deque<std::pair<int64_t, std::function<void()> > > _frame_cache;
 };
 
 class HlsPlayer : public  HttpClientImp , public PlayerBase , public HlsParser{
@@ -73,11 +73,11 @@ protected:
     virtual void onPacket(const char *data, size_t len) = 0;
 
 private:
-    void onParsed(bool is_m3u8_inner,int64_t sequence,const map<int,ts_segment> &ts_map) override;
-    void onResponseHeader(const std::string &status,const HttpHeader &headers) override;
-    void onResponseBody(const char *buf,size_t size) override;
+    bool onParsed(bool is_m3u8_inner, int64_t sequence, const map<int, ts_segment> &ts_map) override;
+    void onResponseHeader(const std::string &status, const HttpHeader &headers) override;
+    void onResponseBody(const char *buf, size_t size) override;
     void onResponseCompleted(const toolkit::SockException &e) override;
-    bool onRedirectUrl(const std::string &url,bool temporary) override;
+    bool onRedirectUrl(const std::string &url, bool temporary) override;
 
 private:
     void playDelay();
@@ -101,6 +101,7 @@ private:
     std::string _play_url;
     toolkit::Timer::Ptr _timer;
     toolkit::Timer::Ptr _timer_ts;
+    toolkit::Ticker _wait_index_update_ticker;
     std::list<ts_segment> _ts_list;
     std::list<std::string> _ts_url_sort;
     std::set<std::string, UrlComp> _ts_url_cache;
@@ -111,7 +112,7 @@ private:
 
 class HlsPlayerImp : public PlayerImp<HlsPlayer, PlayerBase>, private TrackListener {
 public:
-    typedef std::shared_ptr<HlsPlayerImp> Ptr;
+    using Ptr = std::shared_ptr<HlsPlayerImp>;
     HlsPlayerImp(const toolkit::EventPoller::Ptr &poller = nullptr);
     ~HlsPlayerImp() override = default;
 

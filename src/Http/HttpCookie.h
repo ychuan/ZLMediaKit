@@ -25,10 +25,10 @@ namespace mediakit {
  */
 class HttpCookie {
 public:
-    typedef std::shared_ptr<HttpCookie> Ptr;
+    using Ptr = std::shared_ptr<HttpCookie>;
     friend class HttpCookieStorage;
-    HttpCookie(){}
-    ~HttpCookie(){}
+    HttpCookie() = default;
+    ~HttpCookie() = default;
 
     void setPath(const std::string &path);
     void setHost(const std::string &host);
@@ -52,12 +52,14 @@ private:
  */
 class HttpCookieStorage{
 public:
-    ~HttpCookieStorage(){}
+    ~HttpCookieStorage() = default;
     static HttpCookieStorage &Instance();
     void set(const HttpCookie::Ptr &cookie);
     std::vector<HttpCookie::Ptr> get(const std::string &host,const std::string &path);
+
 private:
-    HttpCookieStorage(){};
+    HttpCookieStorage() = default;
+
 private:
     std::unordered_map<std::string/*host*/, std::map<std::string/*cookie path*/,std::map<std::string/*cookie_key*/, HttpCookie::Ptr> > > _all_cookie;
     std::mutex _mtx_cookie;

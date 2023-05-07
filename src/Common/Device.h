@@ -14,7 +14,6 @@
 #include <memory>
 #include <string>
 #include <functional>
-#include "Util/util.h"
 #include "Util/TimeTicker.h"
 #include "Common/MultiMediaSourceMuxer.h"
 
@@ -29,6 +28,7 @@ public:
     int iWidth;
     int iHeight;
     float iFrameRate;
+    int iBitRate = 2 * 1024 * 1024;
 };
 
 class AudioInfo {
@@ -74,7 +74,7 @@ public:
      * @param dts 解码时间戳，单位毫秒；等于0时内部会自动生成时间戳
      * @param pts 播放时间戳，单位毫秒；等于0时内部会赋值为dts
      */
-    bool inputH264(const char *data, int len, uint32_t dts, uint32_t pts = 0);
+    bool inputH264(const char *data, int len, uint64_t dts, uint64_t pts = 0);
 
     /**
      * 输入265帧
@@ -83,7 +83,7 @@ public:
      * @param dts 解码时间戳，单位毫秒；等于0时内部会自动生成时间戳
      * @param pts 播放时间戳，单位毫秒；等于0时内部会赋值为dts
      */
-    bool inputH265(const char *data, int len, uint32_t dts, uint32_t pts = 0);
+    bool inputH265(const char *data, int len, uint64_t dts, uint64_t pts = 0);
 
     /**
      * 输入aac帧
@@ -92,7 +92,7 @@ public:
      * @param dts 时间戳，单位毫秒
      * @param adts_header adts头
      */
-    bool inputAAC(const char *data_without_adts, int len, uint32_t dts, const char *adts_header);
+    bool inputAAC(const char *data_without_adts, int len, uint64_t dts, const char *adts_header);
 
     /**
      * 输入OPUS/G711音频帧
@@ -100,23 +100,28 @@ public:
      * @param len 帧数据长度
      * @param dts 时间戳，单位毫秒
      */
-    bool inputAudio(const char *data, int len, uint32_t dts);
+    bool inputAudio(const char *data, int len, uint64_t dts);
 
     /**
      * 输入yuv420p视频帧，内部会完成编码并调用inputH264方法
-     * @param apcYuv
-     * @param aiYuvLen
-     * @param uiStamp
+     * @param yuv yuv420p数据指针
+     * @param linesize yuv420p数据linesize
+     * @param cts 采集时间戳，单位毫秒
      */
-    bool inputYUV(char *apcYuv[3], int aiYuvLen[3], uint32_t uiStamp);
+    bool inputYUV(char *yuv[3], int linesize[3], uint64_t cts);
 
     /**
      * 输入pcm数据，内部会完成编码并调用inputAAC方法
-     * @param pcData
-     * @param iDataLen
-     * @param uiStamp
+     * @param data pcm数据指针，int16整形
+     * @param len pcm数据长度
+     * @param cts 采集时间戳，单位毫秒
      */
-    bool inputPCM(char *pcData, int iDataLen, uint32_t uiStamp);
+    bool inputPCM(char *data, int len, uint64_t cts);
+
+    //// 重载基类方法，确保线程安全 ////
+    bool inputFrame(const Frame::Ptr &frame) override;
+    bool addTrack(const Track::Ptr & track) override;
+    void addTrackCompleted() override;
 
 private:
     MediaOriginType getOriginType(MediaSource &sender) const override;

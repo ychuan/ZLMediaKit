@@ -11,12 +11,16 @@
 #ifndef ZLMEDIAKIT_SDP_H
 #define ZLMEDIAKIT_SDP_H
 
+#include <set>
+#include <map>
 #include <string>
 #include <vector>
 #include "RtpExt.h"
 #include "assert.h"
 #include "Extension/Frame.h"
 #include "Common/Parser.h"
+
+namespace mediakit {
 
 //https://datatracker.ietf.org/doc/rfc4566/?include_text=1
 //https://blog.csdn.net/aggresss/article/details/109850434
@@ -189,7 +193,7 @@ class SdpMedia : public SdpItem {
 public:
     // 5.14.  Media Descriptions ("m=")
     // m=<media> <port> <proto> <fmt> ...
-    mediakit::TrackType type;
+    TrackType type;
     uint16_t port;
     //RTP/AVP：应用场景为视频/音频的 RTP 协议。参考 RFC 3551
     //RTP/SAVP：应用场景为视频/音频的 SRTP 协议。参考 RFC 3711
@@ -374,7 +378,7 @@ class SdpAttrFmtp : public SdpItem {
 public:
     //fmtp:96 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42e01f
     uint8_t pt;
-    std::map<std::string/*key*/, std::string/*value*/, mediakit::StrCaseCompare> fmtp;
+    std::map<std::string/*key*/, std::string/*value*/, StrCaseCompare> fmtp;
     void parse(const std::string &str) override;
     std::string toString() const override;
     const char* getKey() const override { return "fmtp";}
@@ -490,26 +494,17 @@ public:
 
 class RtcSdpBase {
 public:
-    std::vector<SdpItem::Ptr> items;
+    void addItem(SdpItem::Ptr item) { items.push_back(std::move(item)); }
+    void addAttr(SdpItem::Ptr attr) {
+        auto item = std::make_shared<SdpAttr>();
+        item->detail = std::move(attr);
+        items.push_back(std::move(item));
+    }
 
-public:
     virtual ~RtcSdpBase() = default;
     virtual std::string toString() const;
+    void toRtsp();
 
-    int getVersion() const;
-    SdpOrigin getOrigin() const;
-    std::string getSessionName() const;
-    std::string getSessionInfo() const;
-    SdpTime getSessionTime() const;
-    SdpConnection getConnection() const;
-    SdpBandwidth getBandwidth() const;
-
-    std::string getUri() const;
-    std::string getEmail() const;
-    std::string getPhone() const;
-    std::string getTimeZone() const;
-    std::string getEncryptKey() const;
-    std::string getRepeatTimes() const;
     RtpDirection getDirection() const;
 
     template<typename cls>
@@ -534,8 +529,8 @@ public:
     template<typename cls>
     std::vector<cls> getAllItem(char key_c, const char *attr_key = nullptr) const {
         std::vector<cls> ret;
+        std::string key(1, key_c);
         for (auto item : items) {
-            std::string key(1, key_c);
             if (strcasecmp(item->getKey(), key.data()) == 0) {
                 if (!attr_key) {
                     auto c = std::dynamic_pointer_cast<cls>(item);
@@ -555,12 +550,29 @@ public:
         }
         return ret;
     }
+
+private:
+    std::vector<SdpItem::Ptr> items;
 };
 
 class RtcSessionSdp : public RtcSdpBase{
 public:
     using Ptr = std::shared_ptr<RtcSessionSdp>;
+    int getVersion() const;
+    SdpOrigin getOrigin() const;
+    std::string getSessionName() const;
+    std::string getSessionInfo() const;
+    SdpTime getSessionTime() const;
+    SdpConnection getConnection() const;
+    SdpBandwidth getBandwidth() const;
 
+    std::string getUri() const;
+    std::string getEmail() const;
+    std::string getPhone() const;
+    std::string getTimeZone() const;
+    std::string getEncryptKey() const;
+    std::string getRepeatTimes() const;
+    
     std::vector<RtcSdpBase> medias;
     void parse(const std::string &str);
     std::string toString() const override;
@@ -592,7 +604,7 @@ public:
     uint32_t channel = 0;
     //rtcp反馈
     std::set<std::string> rtcp_fb;
-    std::map<std::string/*key*/, std::string/*value*/, mediakit::StrCaseCompare> fmtp;
+    std::map<std::string/*key*/, std::string/*value*/, StrCaseCompare> fmtp;
 
     std::string getFmtp(const char *key) const;
 };
@@ -600,10 +612,11 @@ public:
 //rtc 媒体描述
 class RtcMedia{
 public:
-    mediakit::TrackType type{mediakit::TrackType::TrackInvalid};
+    TrackType type{TrackType::TrackInvalid};
     std::string mid;
     uint16_t port{0};
     SdpConnection addr;
+    SdpBandwidth bandwidth;
     std::string proto;
     RtpDirection direction{RtpDirection::invalid};
     std::vector<RtcCodecPlan> plan;
@@ -658,7 +671,6 @@ public:
     std::string session_info;
     SdpTime time;
     SdpConnection connection;
-    SdpBandwidth bandwidth;
     SdpAttrMsidSemantic msid_semantic;
     std::vector<RtcMedia> media;
     SdpAttrGroup group;
@@ -667,9 +679,10 @@ public:
     void checkValid() const;
     std::string toString() const;
     std::string toRtspSdp() const;
-    const  RtcMedia *getMedia(mediakit::TrackType type) const;
-    bool supportRtcpFb(const std::string &name, mediakit::TrackType type = mediakit::TrackType::TrackVideo) const;
+    const  RtcMedia *getMedia(TrackType type) const;
+    bool supportRtcpFb(const std::string &name, TrackType type = TrackType::TrackVideo) const;
     bool supportSimulcast() const;
+    bool isOnlyDatachannel() const;
 
 private:
     RtcSessionSdp::Ptr toRtcSessionSdp() const;
@@ -697,10 +710,10 @@ public:
 
         std::set<std::string> rtcp_fb;
         std::map<RtpExtType, RtpDirection> extmap;
-        std::vector<mediakit::CodecId> preferred_codec;
+        std::vector<CodecId> preferred_codec;
         std::vector<SdpAttrCandidate> candidate;
 
-        void setDefaultSetting(mediakit::TrackType type);
+        void setDefaultSetting(TrackType type);
         void enableTWCC(bool enable = true);
         void enableREMB(bool enable = true);
     };
@@ -710,19 +723,19 @@ public:
     RtcTrackConfigure application;
 
     void setDefaultSetting(std::string ice_ufrag, std::string ice_pwd, RtpDirection direction, const SdpAttrFingerprint &fingerprint);
-    void addCandidate(const SdpAttrCandidate &candidate, mediakit::TrackType type = mediakit::TrackInvalid);
+    void addCandidate(const SdpAttrCandidate &candidate, TrackType type = TrackInvalid);
 
-    std::shared_ptr<RtcSession> createAnswer(const RtcSession &offer);
+    std::shared_ptr<RtcSession> createAnswer(const RtcSession &offer) const;
 
     void setPlayRtspInfo(const std::string &sdp);
 
-    void enableTWCC(bool enable = true, mediakit::TrackType type = mediakit::TrackInvalid);
-    void enableREMB(bool enable = true, mediakit::TrackType type = mediakit::TrackInvalid);
+    void enableTWCC(bool enable = true, TrackType type = TrackInvalid);
+    void enableREMB(bool enable = true, TrackType type = TrackInvalid);
 
 private:
-    void matchMedia(const std::shared_ptr<RtcSession> &ret, mediakit::TrackType type, const std::vector<RtcMedia> &medias, const RtcTrackConfigure &configure);
-    bool onCheckCodecProfile(const RtcCodecPlan &plan, mediakit::CodecId codec);
-    void onSelectPlan(RtcCodecPlan &plan, mediakit::CodecId codec);
+    void matchMedia(const std::shared_ptr<RtcSession> &ret, const RtcMedia &media) const;
+    bool onCheckCodecProfile(const RtcCodecPlan &plan, CodecId codec) const;
+    void onSelectPlan(RtcCodecPlan &plan, CodecId codec) const;
 
 private:
     RtcCodecPlan::Ptr _rtsp_video_plan;
@@ -739,5 +752,6 @@ private:
     ~SdpConst() = delete;
 };
 
+}// namespace mediakit
 
 #endif //ZLMEDIAKIT_SDP_H

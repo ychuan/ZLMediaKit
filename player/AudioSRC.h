@@ -28,7 +28,6 @@ extern "C" {
 
 #include "Network/Buffer.h"
 #include "SDLAudioDevice.h"
-#include "FFMpegDecoder.h"
 
 class AudioSRCDelegate {
 public:
@@ -42,7 +41,7 @@ public:
 //该类实现pcm的重采样
 class AudioSRC {
 public:
-    typedef std::shared_ptr<AudioSRC> Ptr;
+    using Ptr = std::shared_ptr<AudioSRC>;
     AudioSRC(AudioSRCDelegate *);
     virtual ~AudioSRC();
 

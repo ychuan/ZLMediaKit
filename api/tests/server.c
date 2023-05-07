@@ -8,18 +8,8 @@
  * may be found in the AUTHORS file in the root of the source tree.
  */
 
-#include <signal.h>
 #include <string.h>
 #include "mk_mediakit.h"
-
-#ifdef _WIN32
-#include "windows.h"
-#else
-
-#include "unistd.h"
-
-#endif
-
 #define LOG_LEV 4
 
 /**
@@ -98,8 +88,10 @@ void API_CALL on_mk_media_play(const mk_media_info url_info,
  * 未找到流后会广播该事件，请在监听该事件后去拉流或其他方式产生流，这样就能按需拉流了
  * @param url_info 播放url相关信息
  * @param sender 播放客户端相关信息
+ * @return 1 直接关闭
+ *         0 等待流注册
  */
-void API_CALL on_mk_media_not_found(const mk_media_info url_info,
+int API_CALL on_mk_media_not_found(const mk_media_info url_info,
                                     const mk_sock_info sender) {
     char ip[64];
     log_printf(LOG_LEV,
@@ -114,6 +106,7 @@ void API_CALL on_mk_media_not_found(const mk_media_info url_info,
                mk_media_info_get_app(url_info),
                mk_media_info_get_stream(url_info),
                mk_media_info_get_params(url_info));
+    return 0;
 }
 
 /**
@@ -129,6 +122,72 @@ void API_CALL on_mk_media_no_reader(const mk_media_source sender) {
                mk_media_source_get_stream(sender));
 }
 
+//按照json转义规则转义webrtc answer sdp
+static char *escape_string(const char *ptr){
+    char *escaped = malloc(2 * strlen(ptr));
+    char *ptr_escaped = escaped;
+    while (1) {
+        switch (*ptr) {
+            case '\r': {
+                *(ptr_escaped++) = '\\';
+                *(ptr_escaped++) = 'r';
+                break;
+            }
+            case '\n': {
+                *(ptr_escaped++) = '\\';
+                *(ptr_escaped++) = 'n';
+                break;
+            }
+            case '\t': {
+                *(ptr_escaped++) = '\\';
+                *(ptr_escaped++) = 't';
+                break;
+            }
+
+            default: {
+                *(ptr_escaped++) = *ptr;
+                if (!*ptr) {
+                    return escaped;
+                }
+                break;
+            }
+        }
+        ++ptr;
+    }
+}
+
+static void on_mk_webrtc_get_answer_sdp_func(void *user_data, const char *answer, const char *err) {
+    const char *response_header[] = { "Content-Type", "application/json", "Access-Control-Allow-Origin", "*" , NULL};
+    if (answer) {
+        answer = escape_string(answer);
+    }
+    size_t len = answer ? 2 * strlen(answer) : 1024;
+    char *response_content = (char *)malloc(len);
+
+    if (answer) {
+        snprintf(response_content, len,
+                 "{"
+                 "\"sdp\":\"%s\","
+                 "\"type\":\"answer\","
+                 "\"code\":0"
+                 "}",
+                 answer);
+    } else {
+        snprintf(response_content, len,
+                 "{"
+                 "\"msg\":\"%s\","
+                 "\"code\":-1"
+                 "}",
+                 err);
+    }
+
+    mk_http_response_invoker_do_string(user_data, 200, response_header, response_content);
+    mk_http_response_invoker_clone_release(user_data);
+    free(response_content);
+    if (answer) {
+        free((void *)answer);
+    }
+}
 /**
  * 收到http api请求广播(包括GET/POST)
  * @param parser http请求内容对象
@@ -163,7 +222,7 @@ void API_CALL on_mk_http_request(const mk_parser parser,
     *consumed = 1;
 
     //拦截api: /api/test
-    if(strcmp(url,"/api/test") == 0) {
+    if (strcmp(url, "/api/test") == 0) {
         const char *response_header[] = { "Content-Type", "text/html", NULL };
         const char *content = "<html>"
                               "<head>"
@@ -178,12 +237,16 @@ void API_CALL on_mk_http_request(const mk_parser parser,
         mk_http_body body = mk_http_body_from_string(content, 0);
         mk_http_response_invoker_do(invoker, 200, response_header, body);
         mk_http_body_release(body);
-    }
-    //拦截api: /index/api/webrtc
-    else if(strcmp(url,"/index/api/webrtc") == 0){
-        mk_webrtc_http_response_invoker_do(invoker,parser,sender);
-    }
-    else{
+    } else if (strcmp(url, "/index/api/webrtc") == 0) {
+        //拦截api: /index/api/webrtc
+        char rtc_url[1024];
+        snprintf(rtc_url, sizeof(rtc_url), "rtc://%s/%s/%s?%s", mk_parser_get_header(parser, "Host"),
+                 mk_parser_get_url_param(parser, "app"), mk_parser_get_url_param(parser, "stream"),
+                 mk_parser_get_url_params(parser));
+
+        mk_webrtc_get_answer_sdp(mk_http_response_invoker_clone(invoker), on_mk_webrtc_get_answer_sdp_func,
+                                 mk_parser_get_url_param(parser, "type"), mk_parser_get_content(parser, NULL), rtc_url);
+    } else {
         *consumed = 0;
         return;
     }
@@ -396,10 +459,6 @@ void API_CALL on_mk_flow_report(const mk_media_info url_info,
               (int)mk_sock_info_peer_port(sender));
 }
 
-static int flag = 1;
-static void s_on_exit(int sig){
-    flag = 0;
-}
 int main(int argc, char *argv[]) {
     char *ini_path = mk_util_get_exe_dir("c_api.ini");
     char *ssl_path = mk_util_get_exe_dir("ssl.p12");
@@ -427,6 +486,7 @@ int main(int argc, char *argv[]) {
     mk_shell_server_start(9000);
     mk_rtp_server_start(10000);
     mk_rtc_server_start(8000);
+    mk_srt_server_start(9000);
 
     mk_events events = {
             .on_mk_media_changed = on_mk_media_changed,
@@ -444,17 +504,11 @@ int main(int argc, char *argv[]) {
             .on_mk_flow_report = on_mk_flow_report
     };
     mk_events_listen(&events);
-
     log_info("media server %s", "stared!");
 
-    signal(SIGINT, s_on_exit );// 设置退出信号
-    while (flag) {
-#ifdef _WIN32
-        Sleep(1000);
-#else
-        sleep(1);
-#endif
-    }
+    log_info("enter any key to exit");
+    getchar();
+
     mk_stop_all_server();
     return 0;
 }

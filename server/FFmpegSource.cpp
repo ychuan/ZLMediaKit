@@ -78,7 +78,13 @@ void FFmpegSource::play(const string &ffmpeg_cmd_key, const string &src_url,cons
     _src_url = src_url;
     _dst_url = dst_url;
     _ffmpeg_cmd_key = ffmpeg_cmd_key;
-    _media_info.parse(dst_url);
+
+    try {
+        _media_info.parse(dst_url);
+    } catch (std::exception &ex) {
+        cb(SockException(Err_other, ex.what()));
+        return;
+    }
 
     auto ffmpeg_cmd = ffmpeg_cmd_default;
     if (!ffmpeg_cmd_key.empty()) {
@@ -273,14 +279,14 @@ void FFmpegSource::setOnClose(const function<void()> &cb){
     _onClose = cb;
 }
 
-bool FFmpegSource::close(MediaSource &sender, bool force) {
+bool FFmpegSource::close(MediaSource &sender) {
     auto listener = getDelegate();
-    if(listener && !listener->close(sender,force)){
+    if (listener && !listener->close(sender)) {
         //关闭失败
         return false;
     }
     //该流无人观看，我们停止吧
-    if(_onClose){
+    if (_onClose) {
         _onClose();
     }
     return true;

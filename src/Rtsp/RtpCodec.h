@@ -12,8 +12,9 @@
 #define ZLMEDIAKIT_RTPCODEC_H
 
 #include <memory>
+#include "Extension/Frame.h"
 #include "Util/RingBuffer.h"
-#include "Player/PlayerBase.h"
+#include "Rtsp/Rtsp.h"
 
 namespace mediakit {
 
@@ -58,7 +59,7 @@ protected:
     RingType::Ptr _ring;
 };
 
-class RtpInfo{
+class RtpInfo {
 public:
     using Ptr = std::shared_ptr<RtpInfo>;
 
@@ -73,7 +74,7 @@ public:
         _interleaved = interleaved;
     }
 
-    virtual ~RtpInfo() {}
+    virtual ~RtpInfo() = default;
 
     //返回rtp负载最大长度
     size_t getMaxSize() const {
@@ -84,7 +85,7 @@ public:
         return _ssrc;
     }
 
-    RtpPacket::Ptr makeRtp(TrackType type,const void *data, size_t len, bool mark, uint32_t stamp);
+    RtpPacket::Ptr makeRtp(TrackType type,const void *data, size_t len, bool mark, uint64_t stamp);
 
 private:
     uint8_t _pt;

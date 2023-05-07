@@ -17,9 +17,29 @@
 extern "C" {
 #endif
 
+///////////////////////////////////////////Buffer::Ptr/////////////////////////////////////////////
+
+typedef struct mk_buffer_t *mk_buffer;
+typedef void(API_CALL *on_mk_buffer_free)(void *user_data, void *data);
+
+/**
+ * 创建buffer对象
+ * @param data 数据指针
+ * @param len 数据长度
+ * @param cb 数据指针free回调函数，该参数置空时，内部会拷贝数据
+ * @param user_data 数据指针free回调函数on_mk_buffer_free第一个参数
+ * @return buffer对象
+ */
+API_EXPORT mk_buffer API_CALL mk_buffer_from_char(const char *data, size_t len, on_mk_buffer_free cb, void *user_data);
+API_EXPORT mk_buffer API_CALL mk_buffer_from_char2(const char *data, size_t len, on_mk_buffer_free cb, void *user_data, on_user_data_free user_data_free);
+API_EXPORT mk_buffer API_CALL mk_buffer_ref(mk_buffer buffer);
+API_EXPORT void API_CALL mk_buffer_unref(mk_buffer buffer);
+API_EXPORT const char* API_CALL mk_buffer_get_data(mk_buffer buffer);
+API_EXPORT size_t API_CALL mk_buffer_get_size(mk_buffer buffer);
+
 ///////////////////////////////////////////SockInfo/////////////////////////////////////////////
 //SockInfo对象的C映射
-typedef void* mk_sock_info;
+typedef struct mk_sock_info_t *mk_sock_info;
 
 //SockInfo::get_peer_ip()
 API_EXPORT const char* API_CALL mk_sock_info_peer_ip(const mk_sock_info ctx, char *buf);
@@ -46,16 +66,28 @@ API_EXPORT uint16_t API_CALL mk_sock_info_local_port(const mk_sock_info ctx);
 #endif
 ///////////////////////////////////////////TcpSession/////////////////////////////////////////////
 //TcpSession对象的C映射
-typedef void* mk_tcp_session;
+typedef struct mk_tcp_session_t *mk_tcp_session;
+typedef struct mk_tcp_session_ref_t *mk_tcp_session_ref;
+
 //获取基类指针以便获取其网络相关信息
 API_EXPORT mk_sock_info API_CALL mk_tcp_session_get_sock_info(const mk_tcp_session ctx);
 
 //TcpSession::safeShutdown()
 API_EXPORT void API_CALL mk_tcp_session_shutdown(const mk_tcp_session ctx,int err,const char *err_msg);
 //TcpSession::send()
-API_EXPORT void API_CALL mk_tcp_session_send(const mk_tcp_session ctx,const char *data,size_t len);
+API_EXPORT void API_CALL mk_tcp_session_send(const mk_tcp_session ctx, const char *data, size_t len);
+API_EXPORT void API_CALL mk_tcp_session_send_buffer(const mk_tcp_session ctx, mk_buffer buffer);
+
 //切换到该对象所在线程后再TcpSession::send()
-API_EXPORT void API_CALL mk_tcp_session_send_safe(const mk_tcp_session ctx,const char *data,size_t len);
+API_EXPORT void API_CALL mk_tcp_session_send_safe(const mk_tcp_session ctx, const char *data, size_t len);
+API_EXPORT void API_CALL mk_tcp_session_send_buffer_safe(const mk_tcp_session ctx, mk_buffer buffer);
+
+//创建mk_tcp_session的弱引用
+API_EXPORT mk_tcp_session_ref API_CALL mk_tcp_session_ref_from(const mk_tcp_session ctx);
+//删除mk_tcp_session的弱引用
+API_EXPORT void mk_tcp_session_ref_release(const mk_tcp_session_ref ref);
+//根据弱引用获取mk_tcp_session，如果mk_tcp_session已经销毁，那么返回NULL
+API_EXPORT mk_tcp_session mk_tcp_session_from_ref(const mk_tcp_session_ref ref);
 
 ///////////////////////////////////////////自定义tcp服务/////////////////////////////////////////////
 
@@ -71,10 +103,9 @@ typedef struct {
      * 收到客户端发过来的数据
      * @param server_port 服务器端口号
      * @param session 会话处理对象
-     * @param data 数据指针
-     * @param len 数据长度
+     * @param buffer 数据
      */
-    void (API_CALL *on_mk_tcp_session_data)(uint16_t server_port,mk_tcp_session session,const char *data,size_t len);
+    void (API_CALL *on_mk_tcp_session_data)(uint16_t server_port,mk_tcp_session session, mk_buffer buffer);
 
     /**
      * 每隔2秒的定时器，用于管理超时等任务
@@ -111,7 +142,8 @@ typedef enum {
  * @param session 会话对象
  * @param user_data 用户数据指针
  */
-API_EXPORT void API_CALL mk_tcp_session_set_user_data(mk_tcp_session session,void *user_data);
+API_EXPORT void API_CALL mk_tcp_session_set_user_data(mk_tcp_session session, void *user_data);
+API_EXPORT void API_CALL mk_tcp_session_set_user_data2(mk_tcp_session session, void *user_data, on_user_data_free user_data_free);
 
 /**
  * 获取tcp会话对象上附着的用户数据
@@ -136,7 +168,7 @@ API_EXPORT void API_CALL mk_tcp_server_events_listen(const mk_tcp_session_events
 
 ///////////////////////////////////////////自定义tcp客户端/////////////////////////////////////////////
 
-typedef void* mk_tcp_client;
+typedef struct mk_tcp_client_t *mk_tcp_client;
 //获取基类指针以便获取其网络相关信息
 API_EXPORT mk_sock_info API_CALL mk_tcp_client_get_sock_info(const mk_tcp_client ctx);
 
@@ -161,10 +193,9 @@ typedef struct {
     /**
      * 收到tcp服务器发来的数据
      * @param client tcp客户端
-     * @param data 数据指针
-     * @param len 数据长度
+     * @param buffer 数据
      */
-    void (API_CALL *on_mk_tcp_client_data)(mk_tcp_client client,const char *data,size_t len);
+    void (API_CALL *on_mk_tcp_client_data)(mk_tcp_client client, mk_buffer buffer);
 
     /**
      * 每隔2秒的定时器，用于管理超时等任务
@@ -205,6 +236,7 @@ API_EXPORT void API_CALL mk_tcp_client_connect(mk_tcp_client ctx, const char *ho
  * @param len 数据长度，等于0时，内部通过strlen获取
  */
 API_EXPORT void API_CALL mk_tcp_client_send(mk_tcp_client ctx, const char *data, int len);
+API_EXPORT void API_CALL mk_tcp_client_send_buffer(mk_tcp_client ctx, mk_buffer buffer);
 
 /**
  * 切换到本对象的网络线程后再发送数据
@@ -213,13 +245,15 @@ API_EXPORT void API_CALL mk_tcp_client_send(mk_tcp_client ctx, const char *data,
  * @param len 数据长度，等于0时，内部通过strlen获取
  */
 API_EXPORT void API_CALL mk_tcp_client_send_safe(mk_tcp_client ctx, const char *data, int len);
+API_EXPORT void API_CALL mk_tcp_client_send_buffer_safe(mk_tcp_client ctx, mk_buffer buffer);
 
 /**
  * 客户端附着用户数据
  * @param ctx 客户端对象
  * @param user_data 用户数据指针
  */
-API_EXPORT void API_CALL mk_tcp_client_set_user_data(mk_tcp_client ctx,void *user_data);
+API_EXPORT void API_CALL mk_tcp_client_set_user_data(mk_tcp_client ctx, void *user_data);
+API_EXPORT void API_CALL mk_tcp_client_set_user_data2(mk_tcp_client ctx, void *user_data, on_user_data_free user_data_free);
 
 /**
  * 获取客户端对象上附着的用户数据

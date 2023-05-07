@@ -20,7 +20,7 @@ extern "C" {
 #endif
 
 ///////////////////////////////////////////事件线程/////////////////////////////////////////////
-typedef void* mk_thread;
+typedef struct mk_thread_t *mk_thread;
 
 /**
  * 获取tcp会话对象所在事件线程
@@ -52,6 +52,31 @@ API_EXPORT mk_thread API_CALL mk_thread_from_pool();
  */
 API_EXPORT mk_thread API_CALL mk_thread_from_pool_work();
 
+typedef struct mk_thread_pool_t *mk_thread_pool;
+
+/**
+ * 创建线程池
+ * @param name 线程池名称，方便调试
+ * @param n_thread 线程个数，0时为cpu个数
+ * @param priority 线程优先级，分为PRIORITY_LOWEST = 0,PRIORITY_LOW, PRIORITY_NORMAL, PRIORITY_HIGH, PRIORITY_HIGHEST
+ * @return 线程池
+ */
+API_EXPORT mk_thread_pool API_CALL mk_thread_pool_create(const char *name, size_t n_thread, int priority);
+
+/**
+ * 销毁线程池
+ * @param pool 线程池
+ * @return 0:成功
+ */
+API_EXPORT int API_CALL mk_thread_pool_release(mk_thread_pool pool);
+
+/**
+ * 从线程池获取一个线程
+ * @param pool 线程池
+ * @return 线程
+ */
+API_EXPORT mk_thread API_CALL mk_thread_from_thread_pool(mk_thread_pool pool);
+
 ///////////////////////////////////////////线程切换/////////////////////////////////////////////
 typedef void (API_CALL *on_mk_async)(void *user_data);
 
@@ -61,7 +86,18 @@ typedef void (API_CALL *on_mk_async)(void *user_data);
  * @param cb 回调函数
  * @param user_data 用户数据指针
  */
-API_EXPORT void API_CALL mk_async_do(mk_thread ctx,on_mk_async cb, void *user_data);
+API_EXPORT void API_CALL mk_async_do(mk_thread ctx, on_mk_async cb, void *user_data);
+API_EXPORT void API_CALL mk_async_do2(mk_thread ctx, on_mk_async cb, void *user_data, on_user_data_free user_data_free);
+
+/**
+ * 切换到事件线程并延时执行
+ * @param ctx 事件线程
+ * @param ms 延时时间，单位毫秒
+ * @param cb 回调函数
+ * @param user_data 用户数据指针
+ */
+API_EXPORT void API_CALL mk_async_do_delay(mk_thread ctx, size_t ms, on_mk_async cb, void *user_data);
+API_EXPORT void API_CALL mk_async_do_delay2(mk_thread ctx, size_t ms, on_mk_async cb, void *user_data, on_user_data_free user_data_free);
 
 /**
  * 切换到事件线程并同步执行
@@ -69,10 +105,10 @@ API_EXPORT void API_CALL mk_async_do(mk_thread ctx,on_mk_async cb, void *user_da
  * @param cb 回调函数
  * @param user_data 用户数据指针
  */
-API_EXPORT void API_CALL mk_sync_do(mk_thread ctx,on_mk_async cb, void *user_data);
+API_EXPORT void API_CALL mk_sync_do(mk_thread ctx, on_mk_async cb, void *user_data);
 
 ///////////////////////////////////////////定时器/////////////////////////////////////////////
-typedef void* mk_timer;
+typedef struct mk_timer_t *mk_timer;
 
 /**
  * 定时器触发事件
@@ -88,13 +124,39 @@ typedef uint64_t (API_CALL *on_mk_timer)(void *user_data);
  * @param user_data 用户数据指针
  * @return 定时器对象
  */
-API_EXPORT mk_timer API_CALL mk_timer_create(mk_thread ctx,uint64_t delay_ms, on_mk_timer cb, void *user_data);
+API_EXPORT mk_timer API_CALL mk_timer_create(mk_thread ctx, uint64_t delay_ms, on_mk_timer cb, void *user_data);
+API_EXPORT mk_timer API_CALL mk_timer_create2(mk_thread ctx, uint64_t delay_ms, on_mk_timer cb, void *user_data, on_user_data_free user_data_free);
 
 /**
  * 销毁和取消定时器
  * @param ctx 定时器对象
  */
 API_EXPORT void API_CALL mk_timer_release(mk_timer ctx);
+
+///////////////////////////////////////////信号量/////////////////////////////////////////////
+
+typedef struct mk_sem_t *mk_sem;
+
+/**
+ * 创建信号量
+ */
+API_EXPORT mk_sem API_CALL mk_sem_create();
+
+/**
+ * 销毁信号量
+ */
+API_EXPORT void API_CALL mk_sem_release(mk_sem sem);
+
+/**
+ * 信号量加n
+ */
+API_EXPORT void API_CALL mk_sem_post(mk_sem sem, size_t n);
+
+/**
+ * 信号量减1
+ * @param sem
+ */
+API_EXPORT void API_CALL mk_sem_wait(mk_sem sem);
 
 #ifdef __cplusplus
 }

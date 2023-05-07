@@ -12,6 +12,8 @@
 #include <cinttypes>
 #include "Rtsp.h"
 #include "Common/Parser.h"
+#include "Common/config.h"
+#include "Network/Socket.h"
 
 using namespace std;
 using namespace toolkit;
@@ -164,9 +166,10 @@ void SdpParser::load(const string &sdp) {
                     break;
                 case 'm': {
                     track = std::make_shared<SdpTrack>();
-                    int pt, port;
+                    int pt, port, port_count;
                     char rtp[16] = {0}, type[16];
-                    if (4 == sscanf(opt_val.data(), " %15[^ ] %d %15[^ ] %d", type, &port, rtp, &pt)) {
+                    if (4 == sscanf(opt_val.data(), " %15[^ ] %d %15[^ ] %d", type, &port, rtp, &pt) ||
+                        5 == sscanf(opt_val.data(), " %15[^ ] %d/%d %15[^ ] %d", type, &port, &port_count, rtp, &pt)) {
                         track->_pt = pt;
                         track->_samplerate = RtpPayload::getClockRate(pt);
                         track->_channel = RtpPayload::getAudioChannel(pt);
@@ -212,7 +215,7 @@ void SdpParser::load(const string &sdp) {
             char codec[16] = {0};
 
             sscanf(rtpmap.data(), "%d", &pt);
-            if (track._pt != pt) {
+            if (track._pt != pt && track._pt != 0xff) {
                 //pt不匹配
                 it = track._attr.erase(it);
                 continue;
@@ -237,7 +240,7 @@ void SdpParser::load(const string &sdp) {
             auto &fmtp = it->second;
             int pt;
             sscanf(fmtp.data(), "%d", &pt);
-            if (track._pt != pt) {
+            if (track._pt != pt && track._pt != 0xff) {
                 //pt不匹配
                 it = track._attr.erase(it);
                 continue;
@@ -312,60 +315,8 @@ string SdpParser::toString() const {
     return title + video + audio;
 }
 
-bool RtspUrl::parse(const string &strUrl) {
-    auto schema = FindField(strUrl.data(), nullptr, "://");
-    bool isSSL = strcasecmp(schema.data(), "rtsps") == 0;
-    //查找"://"与"/"之间的字符串，用于提取用户名密码
-    auto middle_url = FindField(strUrl.data(), "://", "/");
-    if (middle_url.empty()) {
-        middle_url = FindField(strUrl.data(), "://", nullptr);
-    }
-    auto pos = middle_url.rfind('@');
-    if (pos == string::npos) {
-        //并没有用户名密码
-        return setup(isSSL, strUrl, "", "");
-    }
-
-    //包含用户名密码
-    auto user_pwd = middle_url.substr(0, pos);
-    auto suffix = strUrl.substr(schema.size() + 3 + pos + 1);
-    auto url = StrPrinter << "rtsp://" << suffix << endl;
-    if (user_pwd.find(":") == string::npos) {
-        return setup(isSSL, url, user_pwd, "");
-    }
-    auto user = FindField(user_pwd.data(), nullptr, ":");
-    auto pwd = FindField(user_pwd.data(), ":", nullptr);
-    return setup(isSSL, url, user, pwd);
-}
-
-bool RtspUrl::setup(bool isSSL, const string &strUrl, const string &strUser, const string &strPwd) {
-    auto ip = FindField(strUrl.data(), "://", "/");
-    if (ip.empty()) {
-        ip = split(FindField(strUrl.data(), "://", NULL), "?")[0];
-    }
-    auto port = atoi(FindField(ip.data(), ":", NULL).data());
-    if (port <= 0 || port > UINT16_MAX) {
-        //rtsp 默认端口554
-        port = isSSL ? 322 : 554;
-    } else {
-        //服务器域名
-        ip = FindField(ip.data(), NULL, ":");
-    }
-
-    if (ip.empty()) {
-        return false;
-    }
-
-    _url = std::move(strUrl);
-    _user = std::move(strUser);
-    _passwd = std::move(strPwd);
-    _host = std::move(ip);
-    _port = port;
-    _is_ssl = isSSL;
-    return true;
-}
-
-class PortManager : public std::enable_shared_from_this<PortManager> {
+template<int type>
+class PortManager : public std::enable_shared_from_this<PortManager<type> > {
 public:
     PortManager() {
         static auto func = [](const string &str, int index) {
@@ -384,28 +335,44 @@ public:
         return *instance;
     }
 
-    void bindUdpSock(std::pair<Socket::Ptr, Socket::Ptr> &pair, const string &local_ip, bool re_use_port) {
+    void makeSockPair(std::pair<Socket::Ptr, Socket::Ptr> &pair, const string &local_ip, bool re_use_port, bool is_udp) {
         auto &sock0 = pair.first;
         auto &sock1 = pair.second;
         auto sock_pair = getPortPair();
         if (!sock_pair) {
-            throw runtime_error("none reserved udp port in pool");
+            throw runtime_error("none reserved port in pool");
         }
+        if (is_udp) {
+            if (!sock0->bindUdpSock(2 * *sock_pair, local_ip.data(), re_use_port)) {
+                //分配端口失败
+                throw runtime_error("open udp socket[0] failed");
+            }
 
-        if (!sock0->bindUdpSock(2 * *sock_pair, local_ip.data(), re_use_port)) {
-            //分配端口失败
-            throw runtime_error("open udp socket[0] failed");
+            if (!sock1->bindUdpSock(2 * *sock_pair + 1, local_ip.data(), re_use_port)) {
+                //分配端口失败
+                throw runtime_error("open udp socket[1] failed");
+            }
+
+            auto on_cycle = [sock_pair](Socket::Ptr &, std::shared_ptr<void> &) {};
+            // udp socket没onAccept事件，设置该回调，目的是为了在销毁socket时，回收对象
+            sock0->setOnAccept(on_cycle);
+            sock1->setOnAccept(on_cycle);
+        } else {
+            if (!sock0->listen(2 * *sock_pair, local_ip.data())) {
+                //分配端口失败
+                throw runtime_error("listen tcp socket[0] failed");
+            }
+
+            if (!sock1->listen(2 * *sock_pair + 1, local_ip.data())) {
+                //分配端口失败
+                throw runtime_error("listen tcp socket[1] failed");
+            }
+
+            auto on_cycle = [sock_pair](const Buffer::Ptr &buf, struct sockaddr *addr, int addr_len) {};
+            // udp socket没onAccept事件，设置该回调，目的是为了在销毁socket时，回收对象
+            sock0->setOnRead(on_cycle);
+            sock1->setOnRead(on_cycle);
         }
-
-        if (!sock1->bindUdpSock(2 * *sock_pair + 1, local_ip.data(), re_use_port)) {
-            //分配端口失败
-            throw runtime_error("open udp socket[1] failed");
-        }
-
-        auto on_cycle = [sock_pair](Socket::Ptr &, std::shared_ptr<void> &) {};
-        // udp socket没onAccept事件，设置该回调，目的是为了在销毁socket时，回收对象
-        sock0->setOnAccept(on_cycle);
-        sock1->setOnAccept(on_cycle);
     }
 
 private:
@@ -425,7 +392,7 @@ private:
         _port_pair_pool.pop_front();
         InfoL << "got port from pool:" << 2 * pos << "-" << 2 * pos + 1;
 
-        weak_ptr<PortManager> weak_self = shared_from_this();
+        weak_ptr<PortManager> weak_self = this->shared_from_this();
         std::shared_ptr<uint16_t> ret(new uint16_t(pos), [weak_self, pos](uint16_t *ptr) {
             delete ptr;
             auto strong_self = weak_self.lock();
@@ -445,20 +412,22 @@ private:
     deque<uint16_t> _port_pair_pool;
 };
 
-void makeSockPair(std::pair<Socket::Ptr, Socket::Ptr> &pair, const string &local_ip, bool re_use_port) {
-    //全局互斥锁保护，防止端口重复分配
-    static recursive_mutex s_mtx;
-    lock_guard<recursive_mutex> lck(s_mtx);
+void makeSockPair(std::pair<Socket::Ptr, Socket::Ptr> &pair, const string &local_ip, bool re_use_port, bool is_udp) {
     int try_count = 0;
     while (true) {
         try {
-            PortManager::Instance().bindUdpSock(pair, local_ip, re_use_port);
+            //udp和tcp端口池使用相同算法和范围分配，但是互不相干
+            if (is_udp) {
+                PortManager<0>::Instance().makeSockPair(pair, local_ip, re_use_port, is_udp);
+            } else {
+                PortManager<1>::Instance().makeSockPair(pair, local_ip, re_use_port, is_udp);
+            }
             break;
         } catch (exception &ex) {
             if (++try_count == 3) {
                 throw;
             }
-            WarnL << "open udp socket failed:" << ex.what() << ", retry: " << try_count;
+            WarnL << "open socket failed:" << ex.what() << ", retry: " << try_count;
         }
     }
 }
@@ -471,6 +440,22 @@ string printSSRC(uint32_t ui32Ssrc) {
         sprintf(tmp + 2 * i, "%02X", pSsrc[i]);
     }
     return tmp;
+}
+
+bool isRtp(const char *buf, size_t size) {
+    if (size < 2) {
+        return false;
+    }
+    RtpHeader *header = (RtpHeader *)buf;
+    return ((header->pt < 64) || (header->pt >= 96));
+}
+
+bool isRtcp(const char *buf, size_t size) {
+    if (size < 2) {
+        return false;
+    }
+    RtpHeader *header = (RtpHeader *)buf;
+    return ((header->pt >= 64) && (header->pt < 96));
 }
 
 Buffer::Ptr makeRtpOverTcpPrefix(uint16_t size, uint8_t interleaved) {
@@ -547,12 +532,9 @@ size_t RtpHeader::getPaddingSize(size_t rtp_size) const {
     return *end;
 }
 
-size_t RtpHeader::getPayloadSize(size_t rtp_size) const {
+ssize_t RtpHeader::getPayloadSize(size_t rtp_size) const {
     auto invalid_size = getPayloadOffset() + getPaddingSize(rtp_size);
-    if (invalid_size + RtpPacket::kRtpHeaderSize >= rtp_size) {
-        return 0;
-    }
-    return rtp_size - invalid_size - RtpPacket::kRtpHeaderSize;
+    return (ssize_t)rtp_size - invalid_size - RtpPacket::kRtpHeaderSize;
 }
 
 string RtpHeader::dumpString(size_t rtp_size) const {
@@ -595,8 +577,8 @@ uint32_t RtpPacket::getStamp() const {
     return ntohl(getHeader()->stamp);
 }
 
-uint32_t RtpPacket::getStampMS(bool ntp) const {
-    return ntp ? ntp_stamp & 0xFFFFFFFF : getStamp() * uint64_t(1000) / sample_rate;
+uint64_t RtpPacket::getStampMS(bool ntp) const {
+    return ntp ? ntp_stamp : getStamp() * uint64_t(1000) / sample_rate;
 }
 
 uint32_t RtpPacket::getSSRC() const {
@@ -624,6 +606,41 @@ RtpPacket::Ptr RtpPacket::create() {
 #else
     return Ptr(new RtpPacket);
 #endif
+}
+
+
+/**
+* 构造title类型sdp
+* @param dur_sec rtsp点播时长，0代表直播，单位秒
+* @param header 自定义sdp描述
+* @param version sdp版本
+*/
+
+TitleSdp::TitleSdp(float dur_sec, const std::map<std::string, std::string>& header, int version) : Sdp(0, 0) {
+    _printer << "v=" << version << "\r\n";
+
+    if (!header.empty()) {
+        for (auto &pr : header) {
+            _printer << pr.first << "=" << pr.second << "\r\n";
+        }
+    }
+    else {
+        _printer << "o=- 0 0 IN IP4 0.0.0.0\r\n";
+        _printer << "s=Streamed by " << kServerName << "\r\n";
+        _printer << "c=IN IP4 0.0.0.0\r\n";
+        _printer << "t=0 0\r\n";
+    }
+
+    if (dur_sec <= 0) {
+        //直播
+        _printer << "a=range:npt=now-\r\n";
+    }
+    else {
+        //点播
+        _dur_sec = dur_sec;
+        _printer << "a=range:npt=0-" << dur_sec << "\r\n";
+    }
+    _printer << "a=control:*\r\n";
 }
 
 }//namespace mediakit

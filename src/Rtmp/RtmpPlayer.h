@@ -18,8 +18,6 @@
 #include "Rtmp.h"
 #include "RtmpProtocol.h"
 #include "Player/PlayerBase.h"
-#include "Util/util.h"
-#include "Util/logger.h"
 #include "Util/TimeTicker.h"
 #include "Network/Socket.h"
 #include "Network/TcpClient.h"
@@ -29,7 +27,7 @@ namespace mediakit {
 //实现了rtmp播放器协议部分的功能，及数据接收功能
 class RtmpPlayer : public PlayerBase, public toolkit::TcpClient, public RtmpProtocol {
 public:
-    typedef std::shared_ptr<RtmpPlayer> Ptr;
+    using Ptr = std::shared_ptr<RtmpPlayer>;
     RtmpPlayer(const toolkit::EventPoller::Ptr &poller);
     ~RtmpPlayer() override;
 
@@ -52,7 +50,7 @@ protected:
     //form Tcpclient
     void onRecv(const toolkit::Buffer::Ptr &buf) override;
     void onConnect(const toolkit::SockException &err) override;
-    void onErr(const toolkit::SockException &ex) override;
+    void onError(const toolkit::SockException &ex) override;
     //from RtmpProtocol
     void onRtmpChunk(RtmpPacket::Ptr chunk_data) override;
     void onStreamDry(uint32_t stream_index) override;

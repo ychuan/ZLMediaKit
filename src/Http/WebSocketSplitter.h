@@ -24,7 +24,7 @@ namespace mediakit {
 
 class WebSocketHeader {
 public:
-    typedef std::shared_ptr<WebSocketHeader> Ptr;
+    using Ptr = std::shared_ptr<WebSocketHeader>;
     typedef enum {
         CONTINUATION = 0x0,
         TEXT = 0x1,
@@ -51,7 +51,7 @@ public:
         //根据内存地址设置掩码随机数
         _mask.assign((uint8_t*)(&ptr), (uint8_t*)(&ptr) + 4);
     }
-    virtual ~WebSocketHeader(){}
+    virtual ~WebSocketHeader() = default;
 
 public:
     bool _fin;
@@ -65,13 +65,13 @@ public:
 //websocket协议收到的字符串类型缓存，用户协议层获取该数据传输的方式
 class WebSocketBuffer : public toolkit::BufferString {
 public:
-    typedef std::shared_ptr<WebSocketBuffer> Ptr;
+    using Ptr = std::shared_ptr<WebSocketBuffer>;
 
     template<typename ...ARGS>
     WebSocketBuffer(WebSocketHeader::Type headType, bool fin, ARGS &&...args)
             :  toolkit::BufferString(std::forward<ARGS>(args)...), _fin(fin), _head_type(headType){}
 
-    ~WebSocketBuffer() override {}
+    ~WebSocketBuffer() override = default;
 
     WebSocketHeader::Type headType() const { return _head_type; }
 
@@ -84,8 +84,8 @@ private:
 
 class WebSocketSplitter : public WebSocketHeader{
 public:
-    WebSocketSplitter(){}
-    virtual ~WebSocketSplitter(){}
+    WebSocketSplitter() = default;
+    virtual ~WebSocketSplitter() = default;
 
     /**
      * 输入数据以便解包webSocket数据以及处理粘包问题

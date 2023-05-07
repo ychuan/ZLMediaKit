@@ -17,7 +17,8 @@
 
 using namespace std;
 using namespace toolkit;
-using namespace mediakit;
+
+namespace mediakit {
 
 //https://tools.ietf.org/html/draft-holmer-rmcat-transport-wide-cc-extensions-01
 //https://tools.ietf.org/html/rfc5285
@@ -189,7 +190,7 @@ map<uint8_t/*id*/, RtpExt/*data*/> RtpExt::getExtValue(const RtpHeader *header) 
         appendExt<RtpExtOneByte>(ret, ptr, end);
         return ret;
     }
-    if ((reserved & 0xFFF0) >> 4 == kTwoByteHeader) {
+    if ((reserved & 0xFFF0) == kTwoByteHeader) {
         appendExt<RtpExtTwoByte>(ret, ptr, end);
         return ret;
     }
@@ -644,3 +645,4 @@ void RtpExtContext::onGetRtp(uint8_t pt, uint32_t ssrc, const string &rid){
     }
 }
 
+}// namespace mediakit

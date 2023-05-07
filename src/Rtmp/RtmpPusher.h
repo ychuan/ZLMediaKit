@@ -20,7 +20,7 @@ namespace mediakit {
 
 class RtmpPusher : public RtmpProtocol, public toolkit::TcpClient, public PusherBase {
 public:
-    typedef std::shared_ptr<RtmpPusher> Ptr;
+    using Ptr = std::shared_ptr<RtmpPusher>;
     RtmpPusher(const toolkit::EventPoller::Ptr &poller,const RtmpMediaSource::Ptr &src);
     ~RtmpPusher() override;
 
@@ -31,7 +31,7 @@ protected:
     //for Tcpclient override
     void onRecv(const toolkit::Buffer::Ptr &buf) override;
     void onConnect(const toolkit::SockException &err) override;
-    void onErr(const toolkit::SockException &ex) override;
+    void onError(const toolkit::SockException &ex) override;
 
     //for RtmpProtocol override
     void onRtmpChunk(RtmpPacket::Ptr chunk_data) override;
