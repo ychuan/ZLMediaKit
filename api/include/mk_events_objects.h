@@ -61,19 +61,19 @@ API_EXPORT const char* API_CALL mk_parser_get_content(const mk_parser ctx, size_
 ///////////////////////////////////////////MediaInfo/////////////////////////////////////////////
 //MediaInfo对象的C映射
 typedef struct mk_media_info_t *mk_media_info;
-//MediaInfo::_param_strs
+//MediaInfo::param_strs
 API_EXPORT const char* API_CALL mk_media_info_get_params(const mk_media_info ctx);
-//MediaInfo::_schema
+//MediaInfo::schema
 API_EXPORT const char* API_CALL mk_media_info_get_schema(const mk_media_info ctx);
-//MediaInfo::_vhost
+//MediaInfo::vhost
 API_EXPORT const char* API_CALL mk_media_info_get_vhost(const mk_media_info ctx);
-//MediaInfo::_app
+//MediaInfo::app
 API_EXPORT const char* API_CALL mk_media_info_get_app(const mk_media_info ctx);
-//MediaInfo::_streamid
+//MediaInfo::stream
 API_EXPORT const char* API_CALL mk_media_info_get_stream(const mk_media_info ctx);
-//MediaInfo::_host
+//MediaInfo::host
 API_EXPORT const char* API_CALL mk_media_info_get_host(const mk_media_info ctx);
-//MediaInfo::_port
+//MediaInfo::port
 API_EXPORT uint16_t API_CALL mk_media_info_get_port(const mk_media_info ctx);
 
 
@@ -132,6 +132,12 @@ API_EXPORT void API_CALL mk_media_source_find(const char *schema,
                                               int from_mp4,
                                               void *user_data,
                                               on_mk_media_source_find_cb cb);
+
+API_EXPORT const mk_media_source API_CALL mk_media_source_find2(const char *schema,
+                                                                const char *vhost,
+                                                                const char *app,
+                                                                const char *stream,
+                                                                int from_mp4);
 //MediaSource::for_each_media()
 API_EXPORT void API_CALL mk_media_source_for_each(void *user_data, on_mk_media_source_find_cb cb, const char *schema,
                                                   const char *vhost, const char *app, const char *stream);

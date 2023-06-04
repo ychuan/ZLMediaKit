@@ -25,7 +25,7 @@ namespace {
 class MediaSourceForMuxer : public MediaSource {
 public:
     MediaSourceForMuxer(const MultiMediaSourceMuxer::Ptr &muxer)
-        : MediaSource("muxer", muxer->getVhost(), muxer->getApp(), muxer->getStreamId()) {
+        : MediaSource("muxer", muxer->getMediaTuple()) {
         MediaSource::setListener(muxer);
     }
     int readerCount() override { return 0; }
@@ -33,7 +33,7 @@ public:
 } // namespace
 
 static std::shared_ptr<MediaSinkInterface> makeRecorder(MediaSource &sender, const vector<Track::Ptr> &tracks, Recorder::type type, const ProtocolOption &option){
-    auto recorder = Recorder::createRecorder(type, sender.getVhost(), sender.getApp(), sender.getId(), option);
+    auto recorder = Recorder::createRecorder(type, sender.getMediaTuple(), option);
     for (auto &track : tracks) {
         recorder->addTrack(track);
     }
@@ -71,15 +71,15 @@ static string getTrackInfoStr(const TrackSource *track_src){
 }
 
 const std::string &MultiMediaSourceMuxer::getVhost() const {
-    return _vhost;
+    return _tuple.vhost;
 }
 
 const std::string &MultiMediaSourceMuxer::getApp() const {
-    return _app;
+    return _tuple.app;
 }
 
 const std::string &MultiMediaSourceMuxer::getStreamId() const {
-    return _stream_id;
+    return _tuple.stream;
 }
 
 std::string MultiMediaSourceMuxer::shortUrl() const {
@@ -87,35 +87,37 @@ std::string MultiMediaSourceMuxer::shortUrl() const {
     if (!ret.empty()) {
         return ret;
     }
-    return _vhost + "/" + _app + "/" + _stream_id;
+    return _tuple.shortUrl();
 }
 
-MultiMediaSourceMuxer::MultiMediaSourceMuxer(const string &vhost, const string &app, const string &stream, float dur_sec, const ProtocolOption &option) {
+MultiMediaSourceMuxer::MultiMediaSourceMuxer(const MediaTuple& tuple, float dur_sec, const ProtocolOption &option): _tuple(tuple) {
     _poller = EventPollerPool::Instance().getPoller();
     _create_in_poller = _poller->isCurrentThread();
-    _vhost = vhost;
-    _app = app;
-    _stream_id = stream;
     _option = option;
+    if (dur_sec > 0.01) {
+        // 点播
+        _stamp[TrackVideo].setPlayBack();
+        _stamp[TrackAudio].setPlayBack();
+    }
 
     if (option.enable_rtmp) {
-        _rtmp = std::make_shared<RtmpMediaSourceMuxer>(vhost, app, stream, option, std::make_shared<TitleMeta>(dur_sec));
+        _rtmp = std::make_shared<RtmpMediaSourceMuxer>(_tuple, option, std::make_shared<TitleMeta>(dur_sec));
     }
     if (option.enable_rtsp) {
-        _rtsp = std::make_shared<RtspMediaSourceMuxer>(vhost, app, stream, option, std::make_shared<TitleSdp>(dur_sec));
+        _rtsp = std::make_shared<RtspMediaSourceMuxer>(_tuple, option, std::make_shared<TitleSdp>(dur_sec));
     }
     if (option.enable_hls) {
-        _hls = dynamic_pointer_cast<HlsRecorder>(Recorder::createRecorder(Recorder::type_hls, vhost, app, stream, option));
+        _hls = dynamic_pointer_cast<HlsRecorder>(Recorder::createRecorder(Recorder::type_hls, _tuple, option));
     }
     if (option.enable_mp4) {
-        _mp4 = Recorder::createRecorder(Recorder::type_mp4, vhost, app, stream, option);
+        _mp4 = Recorder::createRecorder(Recorder::type_mp4, _tuple, option);
     }
     if (option.enable_ts) {
-        _ts = std::make_shared<TSMediaSourceMuxer>(vhost, app, stream, option);
+        _ts = std::make_shared<TSMediaSourceMuxer>(_tuple, option);
     }
 #if defined(ENABLE_MP4)
     if (option.enable_fmp4) {
-        _fmp4 = std::make_shared<FMP4MediaSourceMuxer>(vhost, app, stream, option);
+        _fmp4 = std::make_shared<FMP4MediaSourceMuxer>(_tuple, option);
     }
 #endif
 
@@ -327,7 +329,6 @@ EventPoller::Ptr MultiMediaSourceMuxer::getOwnerPoller(MediaSource &sender) {
 }
 
 bool MultiMediaSourceMuxer::onTrackReady(const Track::Ptr &track) {
-
     bool ret = false;
     if (_rtmp) {
         ret = _rtmp->addTrack(track) ? true : ret;
@@ -382,6 +383,11 @@ void MultiMediaSourceMuxer::onAllTrackReady() {
         createGopCacheIfNeed();
     }
 #endif
+    auto tracks = getTracks(false);
+    if (tracks.size() >= 2) {
+        // 音频时间戳同步于视频，因为音频时间戳被修改后不影响播放
+        _stamp[TrackAudio].syncTo(_stamp[TrackVideo]);
+    }
     InfoL << "stream: " << shortUrl() << " , codec info: " << getTrackInfoStr(this);
 }
 
@@ -433,9 +439,9 @@ void MultiMediaSourceMuxer::resetTracks() {
 
 bool MultiMediaSourceMuxer::onTrackFrame(const Frame::Ptr &frame_in) {
     auto frame = frame_in;
-   if (_option.modify_stamp) {
-        //开启了时间戳覆盖
-        frame = std::make_shared<FrameStamp>(frame, _stamp[frame->getTrackType()],true);
+    if (_option.modify_stamp != ProtocolOption::kModifyStampOff) {
+        // 时间戳不采用原始的绝对时间戳
+        frame = std::make_shared<FrameStamp>(frame, _stamp[frame->getTrackType()], _option.modify_stamp);
     }
 
     bool ret = false;
@@ -471,7 +477,9 @@ bool MultiMediaSourceMuxer::onTrackFrame(const Frame::Ptr &frame_in) {
             // 视频时，遇到第一帧配置帧或关键帧则标记为gop开始处
             auto video_key_pos = frame->keyFrame() || frame->configFrame();
             _ring->write(frame, video_key_pos && !_video_key_pos);
-            _video_key_pos = video_key_pos;
+            if (!frame->dropAble()) {
+                _video_key_pos = video_key_pos;
+            }
         } else {
             // 没有视频时，设置is_key为true，目的是关闭gop缓存
             _ring->write(frame, !haveVideo());

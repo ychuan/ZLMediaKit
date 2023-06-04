@@ -9,6 +9,7 @@
  */
 
 #include "Common/config.h"
+#include "MediaSource.h"
 #include "Util/NoticeCenter.h"
 #include "Util/logger.h"
 #include "Util/onceToken.h"
@@ -120,7 +121,7 @@ const string kTSDemand = PROTOCOL_FIELD "ts_demand";
 const string kFMP4Demand = PROTOCOL_FIELD "fmp4_demand";
 
 static onceToken token([]() {
-    mINI::Instance()[kModifyStamp] = 0;
+    mINI::Instance()[kModifyStamp] = (int)ProtocolOption::kModifyStampRelative;
     mINI::Instance()[kEnableAudio] = 1;
     mINI::Instance()[kAddMuteAudio] = 1;
     mINI::Instance()[kContinuePushMS] = 15000;
@@ -159,6 +160,7 @@ const string kNotFound = HTTP_FIELD "notFound";
 const string kDirMenu = HTTP_FIELD "dirMenu";
 const string kForbidCacheSuffix = HTTP_FIELD "forbidCacheSuffix";
 const string kForwardedIpHeader = HTTP_FIELD "forwarded_ip_header";
+const string kAllowCrossDomains = HTTP_FIELD "allow_cross_domains";
 
 static onceToken token([]() {
     mINI::Instance()[kSendBufSize] = 64 * 1024;
@@ -186,6 +188,7 @@ static onceToken token([]() {
                                              << endl;
     mINI::Instance()[kForbidCacheSuffix] = "";
     mINI::Instance()[kForwardedIpHeader] = "";
+    mINI::Instance()[kAllowCrossDomains] = 1;
 });
 
 } // namespace Http
